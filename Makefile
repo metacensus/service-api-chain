@@ -1,4 +1,4 @@
-.PHONY: help build test test-race test-integration lint tidy-check check \
+.PHONY: help build test test-race test-adapter test-artifact test-integration lint tidy-check check \
         docker-build docker-build-chaincode \
         release release-major release-minor release-patch latest list delete-tag
 
@@ -31,19 +31,26 @@ test:
 test-race:
 	go test -race -count=1 ./...
 
-## test-integration — build both images (unless SKIP_DOCKER_BUILD=1) and exercise them on Microfab; needs Docker
-test-integration: $(if $(SKIP_DOCKER_BUILD),,docker-build docker-build-chaincode)
-	cd integration && SERVICE_IMAGE=$(IMAGE):$(IMAGE_TAG) CHAINCODE_IMAGE=$(CHAINCODE_IMAGE):$(IMAGE_TAG) \
-		go test -tags=integration -count=1 -timeout 20m ./...
+## test-adapter — the gateway and the store.Store conformance suite against Microfab; needs Docker, builds no image
+test-adapter:
+	cd integration && go test -tags=adapter -count=1 -timeout 20m ./...
 
-## lint — gofmt -l is empty, go vet, including the integration-tagged code
+## test-artifact — build both images (unless SKIP_DOCKER_BUILD=1) and exercise them on Microfab; needs Docker
+test-artifact: $(if $(SKIP_DOCKER_BUILD),,docker-build docker-build-chaincode)
+	cd integration && SERVICE_IMAGE=$(IMAGE):$(IMAGE_TAG) CHAINCODE_IMAGE=$(CHAINCODE_IMAGE):$(IMAGE_TAG) \
+		go test -tags=artifact -count=1 -timeout 20m ./...
+
+## test-integration — the adapter suite, then the artifact suite
+test-integration: test-adapter test-artifact
+
+## lint — gofmt -l is empty, go vet, including the adapter- and artifact-tagged code
 lint:
 	@unformatted=$$(gofmt -l .); \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt would rewrite:"; echo "$$unformatted"; exit 1; \
 	fi
 	go vet ./...
-	cd integration && go vet -tags=integration ./...
+	cd integration && go vet -tags=adapter ./... && go vet -tags=artifact ./...
 
 ## tidy-check — fail if go mod tidy would change go.mod/go.sum, here or in integration/
 tidy-check:

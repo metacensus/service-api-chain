@@ -74,7 +74,7 @@ jobs:
       - name: Pull Microfab
         run: docker pull ghcr.io/hyperledger-labs/microfab:latest
 
-      - name: Exercise the images on Microfab
+      - name: Exercise the adapter and the images on Microfab
         run: make test-integration SKIP_DOCKER_BUILD=1
 
   ci:
