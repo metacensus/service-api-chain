@@ -34,9 +34,9 @@ func mustRecord(t *testing.T, m proto.Message) []byte {
 	return b
 }
 
-func mustList(t *testing.T, ms ...proto.Message) []byte {
+func mustList[R proto.Message](t *testing.T, recs []R) []byte {
 	t.Helper()
-	b, err := wire.EncodeRecords(ms)
+	b, err := wire.EncodeRecords(recs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestStore_Writes(t *testing.T) {
 		})
 
 		t.Run("error - "+tt.method+" classified from the chaincode", func(t *testing.T) {
-			f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Errf(store.AlreadyExists, "dup", nil)))}
+			f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.AlreadyExists))}
 			err := tt.call(newStore(f))
 			assertKind(t, err, store.AlreadyExists)
 		})
@@ -143,7 +143,7 @@ func TestStore_Credential(t *testing.T) {
 		{name: "success - id and hash", out: wire.EncodeList([][]byte{[]byte("u1"), []byte("h")}), wantID: "u1", wantHash: "h"},
 		{name: "error - one item", out: wire.EncodeList([][]byte{[]byte("u1")}), wantErr: true},
 		{name: "error - malformed list", out: []byte{0xff}, wantErr: true},
-		{name: "error - unauthenticated from the chaincode", err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Errf(store.Unauthenticated, "x", nil))), wantKind: store.Unauthenticated, wantErr: true},
+		{name: "error - unauthenticated from the chaincode", err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Unauthenticated)), wantKind: store.Unauthenticated, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -182,7 +182,7 @@ func runGet[R proto.Message](t *testing.T, tt getCase[R]) {
 		}
 	})
 	t.Run("error - "+tt.name+" not found", func(t *testing.T) {
-		f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Errf(store.NotFound, "x", nil)))}
+		f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.NotFound))}
 		_, err := tt.call(newStore(f))
 		assertKind(t, err, store.NotFound)
 	})
@@ -215,11 +215,7 @@ type listCase[R proto.Message] struct {
 
 func runList[R proto.Message](t *testing.T, tt listCase[R]) {
 	t.Run("success - "+tt.name, func(t *testing.T) {
-		ms := make([]proto.Message, len(tt.want))
-		for i, w := range tt.want {
-			ms[i] = w
-		}
-		f := &fakeContract{out: mustList(t, ms...)}
+		f := &fakeContract{out: mustList(t, tt.want)}
 		got, err := tt.call(newStore(f))
 		if err != nil {
 			t.Fatalf("err = %v", err)

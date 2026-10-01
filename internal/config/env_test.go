@@ -14,8 +14,6 @@ func env(base, override map[string]string) func(string) string {
 	return func(key string) string { return m[key] }
 }
 
-// assertLoad passes when err is nil and got is want, or, given wantProblems,
-// when err lists one problem containing each, in order.
 func assertLoad[C any](t *testing.T, got C, err error, want C, wantProblems []string) {
 	t.Helper()
 	if wantProblems == nil {

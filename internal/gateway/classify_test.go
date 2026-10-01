@@ -41,27 +41,27 @@ func TestClassify(t *testing.T) {
 		{
 			name: "success - kind in an endorse detail",
 			err: statusWithDetails(t, codes.Aborted, "failed to endorse transaction, see attached details for more info",
-				"chaincode response 500, "+wire.ErrorMessage(store.Errf(store.AlreadyExists, "email taken", nil))),
+				"chaincode response 500, "+wire.ErrorMessage(store.AlreadyExists)),
 			want: store.AlreadyExists,
 		},
 		{
 			name: "success - kind in the second of two details",
-			err:  statusWithDetails(t, codes.Aborted, "failed", "peer down", wire.ErrorMessage(store.Errf(store.NotFound, "no such topic", nil))),
+			err:  statusWithDetails(t, codes.Aborted, "failed", "peer down", wire.ErrorMessage(store.NotFound)),
 			want: store.NotFound,
 		},
 		{
 			name: "success - kind in an evaluate status message",
-			err:  statusWithDetails(t, codes.Aborted, "evaluate: chaincode response 500, "+wire.ErrorMessage(store.Errf(store.SignatureInvalid, "bad", nil))),
+			err:  statusWithDetails(t, codes.Aborted, "evaluate: chaincode response 500, "+wire.ErrorMessage(store.SignatureInvalid)),
 			want: store.SignatureInvalid,
 		},
 		{
 			name: "success - kind survives wrapping",
-			err:  fmt.Errorf("outer: %w", statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Errf(store.Unauthenticated, "x", nil)))),
+			err:  fmt.Errorf("outer: %w", statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Unauthenticated))),
 			want: store.Unauthenticated,
 		},
 		{
 			name: "success - chaincode kind outranks the transport code",
-			err:  statusWithDetails(t, codes.Unavailable, wire.ErrorMessage(store.Errf(store.InvalidContent, "x", nil))),
+			err:  statusWithDetails(t, codes.Unavailable, wire.ErrorMessage(store.InvalidContent)),
 			want: store.InvalidContent,
 		},
 		{

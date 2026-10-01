@@ -2,11 +2,9 @@
 
 Decisions with no single declaration to sit beside. Per-declaration detail is a comment beside the code; the [README](README.md) orients an operator.
 
-## What this service is
+## Adding a route
 
-Everything above `store.Store` is [`metacensus/api`](https://github.com/metacensus/api)'s `go/service`; this repository is the store. `go list -f '{{.ImportPath}}: {{.Doc}}' ./...` maps it.
-
-A route starts in the contract and `store.Store`; here it needs a `wire` transaction, a `Dispatch` case, and `gateway` and `ledger` methods — the compiler asks for the methods, `storetest` for the rest.
+A route starts in the contract and `store.Store`; here it needs a `wire` transaction, a `Dispatch` case, and `gateway` and `ledger` methods — the compiler asks for the methods, `storetest` for the rest. `go list -f '{{.ImportPath}}: {{.Doc}}' ./...` maps the packages.
 
 ## Rules below the seam
 

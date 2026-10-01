@@ -84,7 +84,7 @@ check: lint test-race test-integration test-artifact
 
 ## docker-build — build the API image for this machine's arch
 docker-build:
-	docker build -t $(IMAGE):$(IMAGE_TAG) .
+	docker build --target service -t $(IMAGE):$(IMAGE_TAG) .
 
 ## docker-build-chaincode — build the chaincode image for this machine's arch
 docker-build-chaincode:

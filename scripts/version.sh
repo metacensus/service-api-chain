@@ -26,7 +26,7 @@ bump_version() {
         } else if (type == "patch") {
             print $1"."$2"."$3+1
         } else {
-            print "invalid"
+            exit 1
         }
     }'
 }
@@ -44,8 +44,7 @@ determine_version() {
                 echo "Error: TYPE must be specified (major, minor, or patch) when VERSION is not provided" >&2
                 exit 1
             fi
-            bumped=$(bump_version "$current" "$type")
-            if [ "$bumped" = "invalid" ]; then
+            if ! bumped=$(bump_version "$current" "$type"); then
                 echo "Error: Invalid version bump type '$type'. Must be major, minor, or patch" >&2
                 exit 1
             fi

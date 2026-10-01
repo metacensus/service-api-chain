@@ -41,10 +41,9 @@ func Record(m proto.Message) ([]byte, error) {
 }
 
 func DecodeRecord[R proto.Message](b []byte) (R, error) {
-	var r R
-	r = r.ProtoReflect().New().Interface().(R)
+	var zero R
+	r := zero.ProtoReflect().New().Interface().(R)
 	if err := proto.Unmarshal(b, r); err != nil {
-		var zero R
 		return zero, err
 	}
 	return r, nil

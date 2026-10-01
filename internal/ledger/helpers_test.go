@@ -40,6 +40,7 @@ func newPerson(t *testing.T, id string) *person {
 }
 
 func (p *person) sign(t *testing.T, content proto.Message) (*v1.Interpretation, *v1.Signature) {
+	t.Helper()
 	return p.Sign(t, storetest.Origin, content)
 }
 
