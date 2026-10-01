@@ -1,0 +1,10 @@
+.git
+.github
+.gitignore
+Makefile
+README.md
+Dockerfile
+Dockerfile.chaincode
+.dockerignore
+scripts
+integration
