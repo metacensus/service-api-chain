@@ -1,0 +1,294 @@
+//go:build artifact
+
+// Package integration exercises the built images over HTTP, not the handlers.
+package integration
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/metacensus/api/go/contract"
+	v1 "github.com/metacensus/api/go/metacensus/v1"
+	"github.com/metacensus/api/go/server/routes"
+	"github.com/metacensus/api/go/store/storetest"
+
+	"github.com/metacensus/service-api-chain/internal/fabrictest"
+)
+
+const (
+	servicePort   = "3001/tcp"
+	chaincodePort = 9999
+
+	chaincodeAlias = "chaincode"
+
+	appOrigin = "https://app.test"
+
+	bootTimeout = 90 * time.Second
+
+	containerCert = "/fabric/cert.pem"
+	containerKey  = "/fabric/key.pem"
+)
+
+func serviceImage() testcontainers.ContainerRequest {
+	return testcontainers.ContainerRequest{Image: os.Getenv("SERVICE_IMAGE"), ExposedPorts: []string{servicePort}}
+}
+
+func chaincodeImage() testcontainers.ContainerRequest {
+	return testcontainers.ContainerRequest{Image: os.Getenv("CHAINCODE_IMAGE")}
+}
+
+func start(t *testing.T, ctx context.Context, req testcontainers.ContainerRequest) testcontainers.Container {
+	t.Helper()
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if container != nil {
+		t.Cleanup(func() {
+			if t.Failed() {
+				if logs, err := container.Logs(context.Background()); err == nil {
+					body, _ := io.ReadAll(logs)
+					t.Logf("container logs (%s):\n%s", req.Image, body)
+				}
+			}
+			_ = container.Terminate(context.Background())
+		})
+	}
+	if err != nil {
+		t.Fatalf("start container: %v", err)
+	}
+	return container
+}
+
+func TestImages_RefuseToBoot(t *testing.T) {
+	tests := []struct {
+		name string
+		req  testcontainers.ContainerRequest
+	}{
+		{
+			name: "error - service with no configuration",
+			req:  serviceImage(),
+		},
+		{
+			name: "error - chaincode with no configuration",
+			req:  chaincodeImage(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			tt.req.WaitingFor = wait.ForExit().WithExitTimeout(bootTimeout)
+			container := start(t, ctx, tt.req)
+
+			state, err := container.State(ctx)
+			if err != nil {
+				t.Fatalf("container state: %v", err)
+			}
+			if state.ExitCode == 0 {
+				t.Errorf("exit code = 0, want non-zero")
+			}
+		})
+	}
+}
+
+func TestImages_Serve(t *testing.T) {
+	ctx := context.Background()
+	f := microfab
+
+	// The chaincode: packaged to be dialled by alias, and told its own package
+	// id, which exists before the container does.
+	name := fabrictest.Unique("image")
+	pkg, pkgID, err := fabrictest.Pack(name, fmt.Sprintf("%s:%d", chaincodeAlias, chaincodePort))
+	if err != nil {
+		t.Fatalf("package the chaincode: %v", err)
+	}
+	cc := chaincodeImage()
+	cc.Env = map[string]string{
+		"CHAINCODE_ID":             pkgID,
+		"CHAINCODE_SERVER_ADDRESS": fmt.Sprintf(":%d", chaincodePort),
+		"ALLOWED_ORIGINS":          appOrigin,
+		"CHAINCODE_PLAINTEXT":      "1",
+	}
+	cc.Networks = []string{f.Network.Name}
+	cc.NetworkAliases = map[string][]string{f.Network.Name: {chaincodeAlias}}
+	cc.WaitingFor = wait.ForLog(`"msg":"serving"`).WithStartupTimeout(bootTimeout)
+	start(t, ctx, cc)
+	if err := f.Define(ctx, name, pkg, pkgID); err != nil {
+		t.Fatalf("deploy the chaincode image: %v", err)
+	}
+	svc := serviceImage()
+	svc.Env = map[string]string{
+		"FABRIC_PEER_ENDPOINT":  fabrictest.PeerAddr,
+		"FABRIC_PEER_PLAINTEXT": "1",
+		"FABRIC_MSP_ID":         fabrictest.MSPID,
+		"FABRIC_CERT":           containerCert,
+		"FABRIC_KEY":            containerKey,
+		"FABRIC_CHANNEL":        fabrictest.Channel,
+		"FABRIC_CHAINCODE":      name,
+	}
+	svc.Files = []testcontainers.ContainerFile{
+		{HostFilePath: f.CertFile, ContainerFilePath: containerCert, FileMode: 0o644},
+		{HostFilePath: f.KeyFile, ContainerFilePath: containerKey, FileMode: 0o644},
+	}
+	svc.Networks = []string{f.Network.Name}
+	svc.WaitingFor = wait.ForHTTP("/healthz").WithPort(servicePort).WithStartupTimeout(bootTimeout)
+	container := start(t, ctx, svc)
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatalf("container host: %v", err)
+	}
+	port, err := container.MappedPort(ctx, servicePort)
+	if err != nil {
+		t.Fatalf("mapped port: %v", err)
+	}
+	api := &client{t: t, base: fmt.Sprintf("http://%s:%s", host, port.Port())}
+
+	t.Run("error - the API refuses a caller with no session", func(t *testing.T) {
+		status, _ := api.send(http.MethodGet, routes.Prefix+"/self", "", nil)
+		if status != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", status)
+		}
+	})
+
+	t.Run("success - sign up, log in, then a topic, a prop and a vote", func(t *testing.T) {
+		me := fabrictest.NewPerson(t)
+		email := fabrictest.Unique("ada") + "@" + storetest.RPID
+		const password = "correct horse battery staple"
+
+		user := &v1.User{Name: "Ada", Email: email, Country: "GB"}
+		interp, sig := me.Sign(t, appOrigin, user)
+		var signedUp v1.Session
+		api.call(http.MethodPost, "/signup", "", &v1.SignUpRequest{
+			Content: user, Password: password, Interpretation: interp, PublicKey: me.PublicKey, UserSignature: sig,
+		}, &signedUp)
+		if signedUp.GetToken() == "" {
+			t.Fatal("sign-up returned no access token")
+		}
+
+		var session v1.Session
+		api.call(http.MethodPost, "/login", "", &v1.LoginRequest{Email: email, Password: password}, &session)
+		token := session.GetToken()
+		if token == "" {
+			t.Fatal("login returned no access token")
+		}
+
+		var self v1.UserSigned
+		api.call(http.MethodGet, "/self", token, nil, &self)
+		if !proto.Equal(self.GetContent(), user) {
+			t.Fatalf("self = %v, want %v", self.GetContent(), user)
+		}
+
+		topic := &v1.Topic{Name: "Elections", Description: "voting reform"}
+		interp, sig = me.Sign(t, appOrigin, topic)
+		var topicRec v1.TopicSigned
+		api.call(http.MethodPost, "/topic", token, &v1.TopicCreateRequest{
+			Content: topic, Interpretation: interp, UserSignature: sig,
+		}, &topicRec)
+		topicID := topicRec.GetId()
+
+		prop := &v1.Prop{TopicId: topicID, Type: v1.Prop_Statement, Description: "ranked choice"}
+		interp, sig = me.Sign(t, appOrigin, prop)
+		var propRec v1.PropSigned
+		api.call(http.MethodPost, "/topic/"+topicID+"/prop", token, &v1.PropCreateRequest{
+			TopicId: topicID, Content: prop, Interpretation: interp, UserSignature: sig,
+		}, &propRec)
+		propID := propRec.GetId()
+
+		votePath := "/topic/" + topicID + "/prop/" + propID + "/vote"
+		vote := &v1.Vote{TopicId: topicID, PropId: propID, UserId: self.GetId(), Position: v1.Vote_For}
+		interp, sig = me.Sign(t, appOrigin, vote)
+		api.call(http.MethodPost, votePath, token, &v1.VoteSetRequest{
+			TopicId: topicID, PropId: propID, Content: vote, Interpretation: interp, UserSignature: sig,
+		}, &v1.VoteSigned{})
+
+		var votes v1.VoteList
+		api.call(http.MethodGet, votePath, token, nil, &votes)
+		if len(votes.GetItems()) != 1 {
+			t.Fatalf("votes = %d, want 1", len(votes.GetItems()))
+		}
+		if got := votes.GetItems()[0].GetContent(); !proto.Equal(got, vote) {
+			t.Errorf("vote = %v, want %v", got, vote)
+		}
+	})
+}
+
+type client struct {
+	t    *testing.T
+	base string
+}
+
+func (c *client) send(method, path, token string, body []byte) (int, []byte) {
+	c.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(body))
+	if err != nil {
+		c.t.Fatalf("new request: %v", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.t.Fatalf("read %s %s: %v", method, path, err)
+	}
+	return resp.StatusCode, out
+}
+
+// call sends in as protojson, requires 200, and decodes the reply into out.
+func (c *client) call(method, path, token string, in, out proto.Message) {
+	c.t.Helper()
+	var body []byte
+	if in != nil {
+		var err error
+		if body, err = contract.Marshal(in); err != nil {
+			c.t.Fatalf("marshal %s %s: %v", method, path, err)
+		}
+	}
+	status, got := c.send(method, routes.Prefix+path, token, body)
+	if status != http.StatusOK {
+		c.t.Fatalf("%s %s: status %d, body %s", method, path, status, got)
+	}
+	if err := contract.Unmarshal(got, out); err != nil {
+		c.t.Fatalf("decode %s %s: %v", method, path, err)
+	}
+}
+
+var microfab *fabrictest.Fab
+
+func TestMain(m *testing.M) {
+	os.Exit(run(m))
+}
+
+func run(m *testing.M) int {
+	for _, env := range []string{"SERVICE_IMAGE", "CHAINCODE_IMAGE"} {
+		if os.Getenv(env) == "" {
+			log.Printf("%s unset; run make test-artifact", env)
+			return 1
+		}
+	}
+	f, err := fabrictest.Start(context.Background())
+	if err != nil {
+		log.Printf("start Fabric: %v", err)
+		return 1
+	}
+	microfab = f
+	return f.Run(m)
+}

@@ -1,0 +1,28 @@
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags: [integration, artifact]
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+    - gosec
+  settings:
+    errcheck:
+      # A failed Close on a read path or in a defer has no one to tell.
+      exclude-functions:
+        - (io.Closer).Close
+        - (net.Listener).Close
+        - (github.com/hyperledger/fabric-chaincode-go/v2/shim.CommonIteratorInterface).Close
+  exclusions:
+    rules:
+      # Tests, and the harness they share, open files and URLs they built themselves.
+      - path: (_test\.go|^internal/fabrictest/)
+        linters: [gosec]
