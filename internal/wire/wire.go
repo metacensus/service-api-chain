@@ -55,7 +55,7 @@ func DecodeEnrollUser(args [][]byte) (record *v1.UserSigned, publicKey, password
 	}
 	record = &v1.UserSigned{}
 	if err := proto.Unmarshal(args[0], record); err != nil {
-		return nil, "", "", fmt.Errorf("wire: record: %w", err)
+		return nil, "", "", store.Errf(store.InvalidContent, "wire", fmt.Errorf("record: %w", err))
 	}
 	return record, string(args[1]), string(args[2]), nil
 }
@@ -73,7 +73,7 @@ func DecodeWrite(args [][]byte, record proto.Message) (callerID string, err erro
 		return "", err
 	}
 	if err := proto.Unmarshal(args[1], record); err != nil {
-		return "", fmt.Errorf("wire: record: %w", err)
+		return "", store.Errf(store.InvalidContent, "wire", fmt.Errorf("record: %w", err))
 	}
 	return string(args[0]), nil
 }
@@ -99,7 +99,7 @@ func DecodeStrings(args [][]byte, n int) ([]string, error) {
 
 func arity(args [][]byte, n int) error {
 	if len(args) != n {
-		return fmt.Errorf("wire: %d arguments, want %d", len(args), n)
+		return store.Errf(store.InvalidContent, "wire", fmt.Errorf("%d arguments, want %d", len(args), n))
 	}
 	return nil
 }

@@ -39,8 +39,8 @@ func TestEnrollUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec, pk, hash, err := DecodeEnrollUser(tt.args)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("decoded; want an error")
+				if got := store.KindOf(err); got != store.InvalidContent {
+					t.Fatalf("err = %v (Kind %q); want Kind %q", err, got, store.InvalidContent)
 				}
 				return
 			}
@@ -73,8 +73,8 @@ func TestWrite(t *testing.T) {
 			got := &v1.TopicSigned{}
 			caller, err := DecodeWrite(tt.args, got)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("decoded; want an error")
+				if got := store.KindOf(err); got != store.InvalidContent {
+					t.Fatalf("err = %v (Kind %q); want Kind %q", err, got, store.InvalidContent)
 				}
 				return
 			}
@@ -104,8 +104,8 @@ func TestDecodeStrings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := DecodeStrings(tt.args, tt.n)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("decoded; want an error")
+				if got := store.KindOf(err); got != store.InvalidContent {
+					t.Fatalf("err = %v (Kind %q); want Kind %q", err, got, store.InvalidContent)
 				}
 				return
 			}
