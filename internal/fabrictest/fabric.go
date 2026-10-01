@@ -1,10 +1,8 @@
-//go:build adapter || artifact
+//go:build integration || artifact
 
-// Package integration runs the store against Microfab: -tags=adapter (make
-// test-adapter) serves the chaincode from this process; -tags=artifact (make
-// test-artifact) runs the shipped images, named by SERVICE_IMAGE and
-// CHAINCODE_IMAGE or built from the Dockerfiles.
-package integration
+// Package fabrictest is the Microfab plumbing the adapter tests
+// (internal/gateway) and the artifact suite (integration/) share.
+package fabrictest
 
 import (
 	"bytes"
@@ -18,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"testing"
 	"time"
 
 	fabcc "github.com/hyperledger/fabric-admin-sdk/pkg/chaincode"
@@ -32,8 +31,8 @@ import (
 )
 
 const (
-	channel = "metacensus"
-	mspID   = "Org1MSP"
+	Channel = "metacensus"
+	MSPID   = "Org1MSP"
 
 	// Microfab's HTTP API, and the peer's own gRPC port. The peer is dialled
 	// directly: Microfab's authority-routed proxy on 8080 intermittently drops
@@ -41,30 +40,50 @@ const (
 	microfabPort = "8080/tcp"
 	peerPort     = "2000/tcp"
 
-	hostAlias     = "host.testcontainers.internal"
+	// HostAlias is how a container reaches this process's HostAccessPorts.
+	HostAlias = "host.testcontainers.internal"
+	// PeerAddr is how a container on Fab.Network reaches the peer.
+	PeerAddr      = microfabAlias + ":2000"
 	microfabAlias = "microfab"
 
 	microfabConfig = `{"endorsing_organizations":[{"name":"Org1"}],"channels":[{"name":"metacensus","endorsing_organizations":["Org1"]}],"couchdb":false,"certificate_authorities":false}`
 )
 
-// fab is the one network every test shares.
-type fab struct {
-	net       *testcontainers.DockerNetwork
+// Fab is the one network every test in a binary shares.
+type Fab struct {
+	Network *testcontainers.DockerNetwork
+	// CertFile and KeyFile are Org1's admin identity.
+	CertFile  string
+	KeyFile   string
 	container testcontainers.Container
 	peerAddr  string // host:port of the peer itself, from this process
-	certFile  string
-	keyFile   string
 	admin     identity.SigningIdentity
 	conn      *grpc.ClientConn
+	adminDir  string
 }
 
-// startFabric starts Microfab on a fresh network; containers reach hostPorts of this process at hostAlias.
-func startFabric(ctx context.Context, hostPorts ...int) (*fab, error) {
+// Start starts Microfab on a fresh network; containers reach hostPorts of this process at HostAlias.
+// A failure tears down whatever started.
+func Start(ctx context.Context, hostPorts ...int) (*Fab, error) {
+	t0 := time.Now()
+	f, err := start(ctx, hostPorts)
+	if err != nil {
+		if f != nil {
+			f.DumpLogs(ctx)
+			f.Close(ctx)
+		}
+		return nil, err
+	}
+	log.Printf("Microfab started in %s", time.Since(t0).Round(time.Millisecond))
+	return f, nil
+}
+
+func start(ctx context.Context, hostPorts []int) (*Fab, error) {
 	nw, err := network.New(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("network: %w", err)
 	}
-	f := &fab{net: nw}
+	f := &Fab{Network: nw}
 
 	f.container, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -79,7 +98,6 @@ func startFabric(ctx context.Context, hostPorts ...int) (*fab, error) {
 		Started: true,
 	})
 	if err != nil {
-		f.dumpLogs(ctx)
 		return f, fmt.Errorf("microfab: %w", err)
 	}
 
@@ -102,7 +120,8 @@ func startFabric(ctx context.Context, hostPorts ...int) (*fab, error) {
 	if err != nil {
 		return f, err
 	}
-	f.certFile, f.keyFile = filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+	f.adminDir = dir
+	f.CertFile, f.KeyFile = filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
 	if err := f.fetchAdmin(addr); err != nil {
 		return f, fmt.Errorf("admin identity: %w", err)
 	}
@@ -114,9 +133,9 @@ func startFabric(ctx context.Context, hostPorts ...int) (*fab, error) {
 	return f, nil
 }
 
-// fetchAdmin writes Org1's admin certificate and key where gateway.Options
+// fetchAdmin writes Org1's admin certificate and key where Options
 // reads them, and builds the signing identity that deploys chaincode.
-func (f *fab) fetchAdmin(addr string) error {
+func (f *Fab) fetchAdmin(addr string) error {
 	resp, err := http.Get("http://" + addr + "/ak/api/v1/components")
 	if err != nil {
 		return err
@@ -143,17 +162,17 @@ func (f *fab) fetchAdmin(addr string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(f.certFile, cert, 0o600); err != nil {
+		if err := os.WriteFile(f.CertFile, cert, 0o600); err != nil {
 			return err
 		}
-		if err := os.WriteFile(f.keyFile, key, 0o600); err != nil {
+		if err := os.WriteFile(f.KeyFile, key, 0o600); err != nil {
 			return err
 		}
-		x509Cert, err := identity.ReadCertificate(f.certFile)
+		x509Cert, err := identity.ReadCertificate(f.CertFile)
 		if err != nil {
 			return err
 		}
-		priv, err := identity.ReadPrivateKey(f.keyFile)
+		priv, err := identity.ReadPrivateKey(f.KeyFile)
 		if err != nil {
 			return err
 		}
@@ -163,25 +182,25 @@ func (f *fab) fetchAdmin(addr string) error {
 	return fmt.Errorf("no org1admin among %d components", len(components))
 }
 
-func (f *fab) options(chaincodeName string) gateway.Options {
+// Options connects the gateway to the peer, as the admin, at chaincodeName.
+func (f *Fab) Options(chaincodeName string) gateway.Options {
 	return gateway.Options{
 		PeerEndpoint: f.peerAddr,
-		MSPID:        mspID,
-		CertFile:     f.certFile,
-		KeyFile:      f.keyFile,
-		Channel:      channel,
+		MSPID:        MSPID,
+		CertFile:     f.CertFile,
+		KeyFile:      f.KeyFile,
+		Channel:      Channel,
 		Chaincode:    chaincodeName,
 	}
 }
 
-// pack is a chaincode-as-a-service package whose connection.json points the
-// peer at address. The label is unique per run so nothing collides on a reused network.
-func pack(label, address string) (pkg []byte, pkgID string, err error) {
+// Pack is a chaincode-as-a-service package whose connection.json points the peer at address.
+func Pack(label, address string) (pkg []byte, pkgID string, err error) {
 	dir, err := os.MkdirTemp("", "ccaas-")
 	if err != nil {
 		return nil, "", err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	err = fabcc.PackageCCAAS(
 		fabcc.Connection{Address: address, DialTimeout: "10s"},
 		fabcc.Metadata{Type: "ccaas", Label: label}, dir, "pkg.tgz")
@@ -195,12 +214,13 @@ func pack(label, address string) (pkg []byte, pkgID string, err error) {
 	return pkg, pkgID, err
 }
 
-func (f *fab) define(ctx context.Context, name string, pkg []byte, pkgID string) error {
+// Define installs pkg, approves it and commits it as name.
+func (f *Fab) Define(ctx context.Context, name string, pkg []byte, pkgID string) error {
 	if _, err := fabcc.NewPeer(f.conn, f.admin).Install(ctx, bytes.NewReader(pkg)); err != nil {
 		return fmt.Errorf("install: %w", err)
 	}
 	gw := fabcc.NewGateway(f.conn, f.admin)
-	def := &fabcc.Definition{ChannelName: channel, PackageID: pkgID, Name: name, Version: "1", Sequence: 1}
+	def := &fabcc.Definition{ChannelName: Channel, PackageID: pkgID, Name: name, Version: "1", Sequence: 1}
 	if err := gw.Approve(ctx, def); err != nil {
 		return fmt.Errorf("approve: %w", err)
 	}
@@ -210,7 +230,7 @@ func (f *fab) define(ctx context.Context, name string, pkg []byte, pkgID string)
 	return nil
 }
 
-func (f *fab) dumpLogs(ctx context.Context) {
+func (f *Fab) DumpLogs(ctx context.Context) {
 	if f.container == nil {
 		return
 	}
@@ -220,14 +240,28 @@ func (f *fab) dumpLogs(ctx context.Context) {
 	}
 }
 
-func (f *fab) close(ctx context.Context) {
+// Run is a TestMain body: m.Run, then Microfab's logs if it failed, then Close.
+func (f *Fab) Run(m *testing.M) int {
+	ctx := context.Background()
+	defer f.Close(ctx)
+	code := m.Run()
+	if code != 0 {
+		f.DumpLogs(ctx)
+	}
+	return code
+}
+
+func (f *Fab) Close(ctx context.Context) {
+	if f.adminDir != "" {
+		_ = os.RemoveAll(f.adminDir)
+	}
 	if f.conn != nil {
-		f.conn.Close()
+		_ = f.conn.Close()
 	}
 	if f.container != nil {
 		_ = f.container.Terminate(ctx)
 	}
-	if f.net != nil {
-		_ = f.net.Remove(ctx)
+	if f.Network != nil {
+		_ = f.Network.Remove(ctx)
 	}
 }

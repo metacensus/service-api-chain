@@ -119,13 +119,6 @@ func (w *world) topic(p *person, id string) *v1.TopicSigned {
 	return rec
 }
 
-func (w *world) prop(p *person, topicID, id string) *v1.PropSigned {
-	w.t.Helper()
-	rec := p.prop(w.t, topicID, id)
-	w.must(func(s store.Store) error { return s.CreateProp(context.Background(), p.user.GetId(), rec) })
-	return rec
-}
-
 func (w *world) raw(objectType string, attrs ...string) []byte {
 	w.t.Helper()
 	tx := w.state.Begin()

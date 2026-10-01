@@ -1,6 +1,6 @@
-//go:build adapter || artifact
+//go:build integration || artifact
 
-package integration
+package fabrictest
 
 import (
 	"crypto/ecdsa"
@@ -17,15 +17,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// person is a software passkey: a key that signs what a participant's
+// Person is a software passkey: a key that signs what a participant's
 // authenticator would.
-type person struct {
+type Person struct {
 	key       *ecdsa.PrivateKey
 	keyID     string
-	publicKey string // as SignUpRequest.public_key carries it
+	PublicKey string // as SignUpRequest.public_key carries it
 }
 
-func newPerson(t *testing.T) person {
+// NewPerson generates a fresh key.
+func NewPerson(t *testing.T) Person {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -39,10 +40,11 @@ func newPerson(t *testing.T) person {
 	if err != nil {
 		t.Fatalf("encode the key: %v", err)
 	}
-	return person{key: key, keyID: keyID, publicKey: publicKey}
+	return Person{key: key, keyID: keyID, PublicKey: publicKey}
 }
 
-func (p person) sign(t *testing.T, origin string, content proto.Message) (*v1.Interpretation, *v1.Signature) {
+// Sign signs content as an assertion made at origin.
+func (p Person) Sign(t *testing.T, origin string, content proto.Message) (*v1.Interpretation, *v1.Signature) {
 	t.Helper()
 	interp := signing.Interpretation(content)
 	at := timestamppb.New(time.Unix(1_700_000_000, 0).UTC())
@@ -58,10 +60,11 @@ func (p person) sign(t *testing.T, origin string, content proto.Message) (*v1.In
 	return interp, &v1.Signature{KeyId: p.keyID, Time: at, Assertion: assertion}
 }
 
-func (p person) user(t *testing.T, origin, id, email string) *v1.UserSigned {
+// User is a signed enrolment record for p.
+func (p Person) User(t *testing.T, origin, id, email string) *v1.UserSigned {
 	t.Helper()
 	content := &v1.User{Name: "Integration", Email: email, Country: "GB"}
-	interp, sig := p.sign(t, origin, content)
+	interp, sig := p.Sign(t, origin, content)
 	return &v1.UserSigned{
 		Id:             id,
 		Recorded:       timestamppb.Now(),
@@ -71,4 +74,5 @@ func (p person) user(t *testing.T, origin, id, email string) *v1.UserSigned {
 	}
 }
 
-func unique(kind string) string { return fmt.Sprintf("%s-%s", kind, rand.Text()) }
+// Unique is kind plus a random suffix, so tests sharing a ledger never collide.
+func Unique(kind string) string { return fmt.Sprintf("%s-%s", kind, rand.Text()) }

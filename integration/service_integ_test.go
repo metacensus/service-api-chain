@@ -1,5 +1,6 @@
 //go:build artifact
 
+// Package integration exercises the built images over HTTP, not the handlers.
 package integration
 
 import (
@@ -10,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -22,6 +22,8 @@ import (
 	v1 "github.com/metacensus/api/go/metacensus/v1"
 	"github.com/metacensus/api/go/server/routes"
 	"github.com/metacensus/api/go/store/storetest"
+
+	"github.com/metacensus/service-api-chain/internal/fabrictest"
 )
 
 const (
@@ -39,27 +41,12 @@ const (
 	containerKey  = "/fabric/key.pem"
 )
 
-// image is the container request for an image under test: the one named by
-// envVar when set (CI builds each once), else the Dockerfile built here.
-func image(envVar, dockerfile string) testcontainers.ContainerRequest {
-	if name := os.Getenv(envVar); name != "" {
-		return testcontainers.ContainerRequest{Image: name}
-	}
-	return testcontainers.ContainerRequest{FromDockerfile: testcontainers.FromDockerfile{
-		Context:    "..",
-		Dockerfile: dockerfile,
-		KeepImage:  true,
-	}}
-}
-
 func serviceImage() testcontainers.ContainerRequest {
-	req := image("SERVICE_IMAGE", "Dockerfile")
-	req.ExposedPorts = []string{servicePort}
-	return req
+	return testcontainers.ContainerRequest{Image: os.Getenv("SERVICE_IMAGE"), ExposedPorts: []string{servicePort}}
 }
 
 func chaincodeImage() testcontainers.ContainerRequest {
-	return image("CHAINCODE_IMAGE", "Dockerfile.chaincode")
+	return testcontainers.ContainerRequest{Image: os.Getenv("CHAINCODE_IMAGE")}
 }
 
 // start runs req, and on failure prints the container's logs before it is terminated.
@@ -90,23 +77,19 @@ func TestImages_RefuseToBoot(t *testing.T) {
 	tests := []struct {
 		name string
 		req  testcontainers.ContainerRequest
-		env  map[string]string
 	}{
 		{
 			name: "error - service with no configuration",
 			req:  serviceImage(),
-			env:  map[string]string{},
 		},
 		{
 			name: "error - chaincode with no configuration",
 			req:  chaincodeImage(),
-			env:  map[string]string{},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			tt.req.Env = tt.env
 			tt.req.WaitingFor = wait.ForExit().WithExitTimeout(bootTimeout)
 			container := start(t, ctx, tt.req)
 
@@ -131,8 +114,8 @@ func TestImages_Serve(t *testing.T) {
 
 	// The chaincode: packaged to be dialled by alias, and told its own package
 	// id, which exists before the container does.
-	name := "image" + strconv.FormatInt(time.Now().Unix(), 10)
-	pkg, pkgID, err := pack(name, fmt.Sprintf("%s:%d", chaincodeAlias, chaincodePort))
+	name := fabrictest.Unique("image")
+	pkg, pkgID, err := fabrictest.Pack(name, fmt.Sprintf("%s:%d", chaincodeAlias, chaincodePort))
 	if err != nil {
 		t.Fatalf("package the chaincode: %v", err)
 	}
@@ -143,30 +126,30 @@ func TestImages_Serve(t *testing.T) {
 		"ALLOWED_ORIGINS":          appOrigin,
 		"CHAINCODE_PLAINTEXT":      "1",
 	}
-	cc.Networks = []string{f.net.Name}
-	cc.NetworkAliases = map[string][]string{f.net.Name: {chaincodeAlias}}
+	cc.Networks = []string{f.Network.Name}
+	cc.NetworkAliases = map[string][]string{f.Network.Name: {chaincodeAlias}}
 	cc.WaitingFor = wait.ForLog(`"msg":"serving"`).WithStartupTimeout(bootTimeout)
 	start(t, ctx, cc)
-	if err := f.define(ctx, name, pkg, pkgID); err != nil {
+	if err := f.Define(ctx, name, pkg, pkgID); err != nil {
 		t.Fatalf("deploy the chaincode image: %v", err)
 	}
 	t.Logf("chaincode image deployed in %s", time.Since(t0).Round(time.Millisecond))
 
 	svc := serviceImage()
 	svc.Env = map[string]string{
-		"FABRIC_PEER_ENDPOINT":  microfabAlias + ":2000",
+		"FABRIC_PEER_ENDPOINT":  fabrictest.PeerAddr,
 		"FABRIC_PEER_PLAINTEXT": "1",
-		"FABRIC_MSP_ID":         mspID,
+		"FABRIC_MSP_ID":         fabrictest.MSPID,
 		"FABRIC_CERT":           containerCert,
 		"FABRIC_KEY":            containerKey,
-		"FABRIC_CHANNEL":        channel,
+		"FABRIC_CHANNEL":        fabrictest.Channel,
 		"FABRIC_CHAINCODE":      name,
 	}
 	svc.Files = []testcontainers.ContainerFile{
-		{HostFilePath: f.certFile, ContainerFilePath: containerCert, FileMode: 0o644},
-		{HostFilePath: f.keyFile, ContainerFilePath: containerKey, FileMode: 0o644},
+		{HostFilePath: f.CertFile, ContainerFilePath: containerCert, FileMode: 0o644},
+		{HostFilePath: f.KeyFile, ContainerFilePath: containerKey, FileMode: 0o644},
 	}
-	svc.Networks = []string{f.net.Name}
+	svc.Networks = []string{f.Network.Name}
 	svc.WaitingFor = wait.ForHTTP("/healthz").WithPort(servicePort).WithStartupTimeout(bootTimeout)
 	container := start(t, ctx, svc)
 
@@ -189,15 +172,15 @@ func TestImages_Serve(t *testing.T) {
 
 	t.Run("success - sign up, log in, then a topic, a prop and a vote", func(t *testing.T) {
 		t0 := time.Now()
-		me := newPerson(t)
-		email := unique("ada") + "@" + storetest.RPID
+		me := fabrictest.NewPerson(t)
+		email := fabrictest.Unique("ada") + "@" + storetest.RPID
 		const password = "correct horse battery staple"
 
 		user := &v1.User{Name: "Ada", Email: email, Country: "GB"}
-		interp, sig := me.sign(t, appOrigin, user)
+		interp, sig := me.Sign(t, appOrigin, user)
 		var signedUp v1.Session
 		api.call(http.MethodPost, "/signup", "", &v1.SignUpRequest{
-			Content: user, Password: password, Interpretation: interp, PublicKey: me.publicKey, UserSignature: sig,
+			Content: user, Password: password, Interpretation: interp, PublicKey: me.PublicKey, UserSignature: sig,
 		}, &signedUp)
 		if signedUp.GetToken() == "" {
 			t.Fatal("sign-up returned no access token")
@@ -217,7 +200,7 @@ func TestImages_Serve(t *testing.T) {
 		}
 
 		topic := &v1.Topic{Name: "Elections", Description: "voting reform"}
-		interp, sig = me.sign(t, appOrigin, topic)
+		interp, sig = me.Sign(t, appOrigin, topic)
 		var topicRec v1.TopicSigned
 		api.call(http.MethodPost, "/topic", token, &v1.TopicCreateRequest{
 			Content: topic, Interpretation: interp, UserSignature: sig,
@@ -225,7 +208,7 @@ func TestImages_Serve(t *testing.T) {
 		topicID := topicRec.GetId()
 
 		prop := &v1.Prop{TopicId: topicID, Type: v1.Prop_Statement, Description: "ranked choice"}
-		interp, sig = me.sign(t, appOrigin, prop)
+		interp, sig = me.Sign(t, appOrigin, prop)
 		var propRec v1.PropSigned
 		api.call(http.MethodPost, "/topic/"+topicID+"/prop", token, &v1.PropCreateRequest{
 			TopicId: topicID, Content: prop, Interpretation: interp, UserSignature: sig,
@@ -234,7 +217,7 @@ func TestImages_Serve(t *testing.T) {
 
 		votePath := "/topic/" + topicID + "/prop/" + propID + "/vote"
 		vote := &v1.Vote{TopicId: topicID, PropId: propID, UserId: self.GetId(), Position: v1.Vote_For}
-		interp, sig = me.sign(t, appOrigin, vote)
+		interp, sig = me.Sign(t, appOrigin, vote)
 		api.call(http.MethodPost, votePath, token, &v1.VoteSetRequest{
 			TopicId: topicID, PropId: propID, Content: vote, Interpretation: interp, UserSignature: sig,
 		}, &v1.VoteSigned{})
@@ -298,29 +281,24 @@ func (c *client) call(method, path, token string, in, out proto.Message) {
 	}
 }
 
-var microfab *fab
+var microfab *fabrictest.Fab
 
 func TestMain(m *testing.M) {
 	os.Exit(run(m))
 }
 
 func run(m *testing.M) int {
-	ctx := context.Background()
-	t0 := time.Now()
-	f, err := startFabric(ctx)
-	if f != nil {
-		defer f.close(ctx)
+	for _, env := range []string{"SERVICE_IMAGE", "CHAINCODE_IMAGE"} {
+		if os.Getenv(env) == "" {
+			log.Printf("%s unset; run make test-artifact", env)
+			return 1
+		}
 	}
+	f, err := fabrictest.Start(context.Background())
 	if err != nil {
 		log.Printf("start Fabric: %v", err)
 		return 1
 	}
-	log.Printf("Microfab started in %s", time.Since(t0).Round(time.Millisecond))
 	microfab = f
-
-	code := m.Run()
-	if code != 0 {
-		f.dumpLogs(ctx)
-	}
-	return code
+	return f.Run(m)
 }

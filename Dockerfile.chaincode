@@ -7,13 +7,11 @@ WORKDIR /src
 ARG TARGETOS
 ARG TARGETARCH
 
-COPY go.mod go.sum ./
-RUN go mod download
-
 COPY . .
 
-# Static binary.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+# Downloads only what this binary imports, not the test-only graph go.mod also holds.
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/chaincode ./cmd/chaincode
 
 # No ca-certificates: the chaincode makes no outbound call.

@@ -1,22 +1,29 @@
-.PHONY: help build test test-race test-adapter test-artifact test-integration lint tidy-check check \
-        docker-build docker-build-chaincode \
-        release release-major release-minor release-patch latest list delete-tag
+.PHONY: help build test test-race test-integration test-artifact \
+        fmt fmt-check vet tidy-check golangci vuln lint check docker-build docker-build-chaincode \
+        release release-major release-minor release-patch latest
 
 .DEFAULT_GOAL := help
 
 IMAGE           ?= metacensus/service-api-chain
-CHAINCODE_IMAGE ?= metacensus/service-api-chain-chaincode
+CHAINCODE       ?= metacensus/service-api-chain-chaincode
 IMAGE_TAG       ?= dev
 
-# Read from go.mod; an empty GOTOOLCHAIN is silently accepted, so refuse it.
+# Read out of go.mod so no copy can drift from what CI's setup-go uses.
 GOTOOLCHAIN_PIN ?= $(shell awk '/^toolchain /{t=$$2} /^go /{if (g == "") g = "go" $$2} END{print (t != "" ? t : g)}' go.mod)
 ifeq ($(GOTOOLCHAIN_PIN),)
-$(error could not read the Go toolchain from go.mod; refusing to build unpinned)
+$(error could not read the Go toolchain from go.mod; refusing to run unpinned)
 endif
+# A go.work above the checkout would lift the pins; ignore it.
 export GOTOOLCHAIN := $(GOTOOLCHAIN_PIN)
+export GOWORK := off
+
+# Tools run at a pinned version rather than whatever is installed: a linter
+# built with an older Go refuses a newer module, and CI must agree with a laptop.
+GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+GOVULNCHECK   := golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
 help:
-	@awk -F' — ' '/^## /{ sub(/^## /, ""); printf "  make %-26s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk -F' — ' '/^## /{ sub(/^## /, ""); printf "  make %-22s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 ## build — compile both binaries into bin/
 build:
@@ -31,34 +38,49 @@ test:
 test-race:
 	go test -race -count=1 ./...
 
-## test-adapter — the gateway and the store.Store conformance suite against Microfab; needs Docker, builds no image
-test-adapter:
-	cd integration && go test -tags=adapter -count=1 -timeout 20m ./...
+## test-integration — the gateway and the store.Store conformance suite against Microfab (needs Docker)
+test-integration:
+	go test -tags=integration -race -count=1 -timeout 15m ./...
 
-## test-artifact — build both images (unless SKIP_DOCKER_BUILD=1) and exercise them on Microfab; needs Docker
-test-artifact: $(if $(SKIP_DOCKER_BUILD),,docker-build docker-build-chaincode)
-	cd integration && SERVICE_IMAGE=$(IMAGE):$(IMAGE_TAG) CHAINCODE_IMAGE=$(CHAINCODE_IMAGE):$(IMAGE_TAG) \
-		go test -tags=artifact -count=1 -timeout 20m ./...
+## test-artifact — the built images against Microfab (needs Docker; SERVICE_IMAGE and CHAINCODE_IMAGE, full refs, skip the build)
+test-artifact: $(if $(SERVICE_IMAGE),,docker-build docker-build-chaincode)
+	SERVICE_IMAGE=$(or $(SERVICE_IMAGE),$(IMAGE):$(IMAGE_TAG)) CHAINCODE_IMAGE=$(or $(CHAINCODE_IMAGE),$(CHAINCODE):$(IMAGE_TAG)) \
+		go test -tags=artifact -count=1 -timeout 15m ./integration/...
 
-## test-integration — the adapter suite, then the artifact suite
-test-integration: test-adapter test-artifact
+## fmt — rewrite with gofmt
+fmt:
+	gofmt -w .
 
-## lint — gofmt -l is empty, go vet, including the adapter- and artifact-tagged code
-lint:
+## fmt-check — fail if gofmt would rewrite anything
+fmt-check:
 	@unformatted=$$(gofmt -l .); \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt would rewrite:"; echo "$$unformatted"; exit 1; \
 	fi
-	go vet ./...
-	cd integration && go vet -tags=adapter ./... && go vet -tags=artifact ./...
 
-## tidy-check — fail if go mod tidy would change go.mod/go.sum, here or in integration/
+## vet — go vet, integration- and artifact-tagged code included
+vet:
+	go vet ./...
+	go vet -tags=integration ./...
+	go vet -tags=artifact ./...
+
+## tidy-check — fail if go mod tidy would change go.mod or go.sum
 tidy-check:
 	go mod tidy -diff
-	cd integration && go mod tidy -diff
 
-## check — lint, tidy-check, test-race: everything but integration
-check: lint tidy-check test-race
+## golangci — golangci-lint, from .golangci.yml
+golangci:
+	go run $(GOLANGCI_LINT) run ./...
+
+## vuln — govulncheck over the module's dependencies
+vuln:
+	go run $(GOVULNCHECK) ./...
+
+## lint — formatting, vet, module freshness and golangci-lint
+lint: fmt-check vet tidy-check golangci
+
+## check — lint, race tests and both integration suites
+check: lint test-race test-integration test-artifact
 
 ## docker-build — build the API image for this machine's arch
 docker-build:
@@ -66,7 +88,7 @@ docker-build:
 
 ## docker-build-chaincode — build the chaincode image for this machine's arch
 docker-build-chaincode:
-	docker build -f Dockerfile.chaincode -t $(CHAINCODE_IMAGE):$(IMAGE_TAG) .
+	docker build -f Dockerfile.chaincode -t $(CHAINCODE):$(IMAGE_TAG) .
 
 ## release — tag and push VERSION=x.y.z or the next TYPE=major|minor|patch; prompts unless YES=1
 release: scripts/version.sh
@@ -118,17 +140,4 @@ release-patch:
 
 ## latest — print the most recent version tag
 latest:
-	@git tag -l "v*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$$" | sort -V | tail -1
-
-## list — print every version tag
-list:
-	@git tag -l "v*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$$" | sort -V
-
-## delete-tag — delete TAG=vX.Y.Z locally and on the remote
-delete-tag:
-	@if [ -z "$(TAG)" ]; then \
-		echo "Usage: make delete-tag TAG=v1.2.3"; \
-		exit 1; \
-	fi; \
-	git tag -d "$(TAG)" 2>/dev/null || true; \
-	git push origin ":refs/tags/$(TAG)"
+	@bash -c '. scripts/version.sh && v=$$(get_latest_version) && [ -n "$$v" ] && echo v$$v || true'
