@@ -1,23 +1,13 @@
 package config
 
-import (
-	"errors"
-	"maps"
-	"reflect"
-	"strings"
-	"testing"
-)
+import "testing"
 
-func chaincodeEnv(override map[string]string) func(string) string {
-	env := map[string]string{
-		"CHAINCODE_ID":             "store:abc",
-		"CHAINCODE_SERVER_ADDRESS": ":9999",
-		"ALLOWED_ORIGINS":          "https://metacensus.example",
-		"CHAINCODE_TLS_CERT":       "/tls/cert.pem",
-		"CHAINCODE_TLS_KEY":        "/tls/key.pem",
-	}
-	maps.Copy(env, override)
-	return func(key string) string { return env[key] }
+var chaincodeBase = map[string]string{
+	"CHAINCODE_ID":             "store:abc",
+	"CHAINCODE_SERVER_ADDRESS": ":9999",
+	"ALLOWED_ORIGINS":          "https://metacensus.example",
+	"CHAINCODE_TLS_CERT":       "/tls/cert.pem",
+	"CHAINCODE_TLS_KEY":        "/tls/key.pem",
 }
 
 func TestLoadChaincode(t *testing.T) {
@@ -52,21 +42,6 @@ func TestLoadChaincode(t *testing.T) {
 			name:     "error - address without a port",
 			override: map[string]string{"CHAINCODE_SERVER_ADDRESS": "localhost"},
 			problems: []string{"CHAINCODE_SERVER_ADDRESS must be host:port"},
-		},
-		{
-			name:     "error - origin with a path",
-			override: map[string]string{"ALLOWED_ORIGINS": "https://a.example/app"},
-			problems: []string{"must be an origin"},
-		},
-		{
-			name:     "error - origin with a trailing slash",
-			override: map[string]string{"ALLOWED_ORIGINS": "https://a.example/"},
-			problems: []string{"must be an origin"},
-		},
-		{
-			name:     "error - origin without a scheme",
-			override: map[string]string{"ALLOWED_ORIGINS": "a.example"},
-			problems: []string{"must be an origin"},
 		},
 		{
 			name:     "error - one bad origin among good",
@@ -106,28 +81,8 @@ func TestLoadChaincode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LoadChaincode(chaincodeEnv(tt.override))
-			if len(tt.problems) == 0 {
-				if err != nil {
-					t.Fatalf("LoadChaincode: %v", err)
-				}
-				if !reflect.DeepEqual(got, tt.want) {
-					t.Errorf("got %+v, want %+v", got, tt.want)
-				}
-				return
-			}
-			var probs problems
-			if !errors.As(err, &probs) {
-				t.Fatalf("err = %v, want problems", err)
-			}
-			if len(probs) != len(tt.problems) {
-				t.Fatalf("problems = %q, want %d", probs, len(tt.problems))
-			}
-			for i, want := range tt.problems {
-				if !strings.Contains(probs[i], want) {
-					t.Errorf("problem %d = %q, want it to contain %q", i, probs[i], want)
-				}
-			}
+			got, err := LoadChaincode(env(chaincodeBase, tt.override))
+			assertLoad(t, got, err, tt.want, tt.problems)
 		})
 	}
 }

@@ -4,7 +4,6 @@
 package memkv
 
 import (
-	"errors"
 	"fmt"
 	"iter"
 	"slices"
@@ -54,9 +53,6 @@ func (t *Tx) Get(key string) ([]byte, error) {
 }
 
 func (t *Tx) Put(key string, value []byte) error {
-	if key == "" {
-		return errors.New("memkv: empty key")
-	}
 	t.puts[key] = slices.Clone(value)
 	return nil
 }

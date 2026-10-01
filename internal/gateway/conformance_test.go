@@ -14,6 +14,7 @@ import (
 
 	"github.com/metacensus/service-api-chain/internal/chaincode"
 	"github.com/metacensus/service-api-chain/internal/ledger/memkv"
+	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
 // inProcess is a channel in process; a failure surfaces as a peer would
@@ -41,7 +42,7 @@ func (p inProcess) invoke(name string, args [][]byte) (out []byte, err error) {
 
 func peerError(err error) error {
 	s, derr := status.New(codes.Aborted, "failed to endorse transaction, see attached details for more info").
-		WithDetails(&gateway.ErrorDetail{Message: "chaincode response 500, " + chaincode.ErrorMessage(err)})
+		WithDetails(&gateway.ErrorDetail{Message: "chaincode response 500, " + wire.ErrorMessage(err)})
 	if derr != nil {
 		return derr
 	}

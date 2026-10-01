@@ -36,7 +36,6 @@ const (
 
 	bootTimeout = 90 * time.Second
 
-	// Where the service image reads the admin identity.
 	containerCert = "/fabric/cert.pem"
 	containerKey  = "/fabric/key.pem"
 )
@@ -49,7 +48,6 @@ func chaincodeImage() testcontainers.ContainerRequest {
 	return testcontainers.ContainerRequest{Image: os.Getenv("CHAINCODE_IMAGE")}
 }
 
-// start runs req, and on failure prints the container's logs before it is terminated.
 func start(t *testing.T, ctx context.Context, req testcontainers.ContainerRequest) testcontainers.Container {
 	t.Helper()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -104,13 +102,9 @@ func TestImages_RefuseToBoot(t *testing.T) {
 	}
 }
 
-// TestImages_Serve deploys the chaincode image to Microfab, points the service
-// image at it, and walks the API over HTTP: sign up, log in, then a topic, a
-// prop and a vote, each persisted by a committed transaction.
 func TestImages_Serve(t *testing.T) {
 	ctx := context.Background()
 	f := microfab
-	t0 := time.Now()
 
 	// The chaincode: packaged to be dialled by alias, and told its own package
 	// id, which exists before the container does.
@@ -133,8 +127,6 @@ func TestImages_Serve(t *testing.T) {
 	if err := f.Define(ctx, name, pkg, pkgID); err != nil {
 		t.Fatalf("deploy the chaincode image: %v", err)
 	}
-	t.Logf("chaincode image deployed in %s", time.Since(t0).Round(time.Millisecond))
-
 	svc := serviceImage()
 	svc.Env = map[string]string{
 		"FABRIC_PEER_ENDPOINT":  fabrictest.PeerAddr,
@@ -171,7 +163,6 @@ func TestImages_Serve(t *testing.T) {
 	})
 
 	t.Run("success - sign up, log in, then a topic, a prop and a vote", func(t *testing.T) {
-		t0 := time.Now()
 		me := fabrictest.NewPerson(t)
 		email := fabrictest.Unique("ada") + "@" + storetest.RPID
 		const password = "correct horse battery staple"
@@ -230,7 +221,6 @@ func TestImages_Serve(t *testing.T) {
 		if got := votes.GetItems()[0].GetContent(); !proto.Equal(got, vote) {
 			t.Errorf("vote = %v, want %v", got, vote)
 		}
-		t.Logf("flow took %s", time.Since(t0).Round(time.Millisecond))
 	})
 }
 

@@ -3,7 +3,7 @@ package gateway
 import "context"
 
 type call struct {
-	submit bool // submitted; otherwise evaluated
+	submit bool
 	name   string
 	args   [][]byte
 }

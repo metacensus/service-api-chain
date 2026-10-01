@@ -2,6 +2,8 @@ package wire
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -156,9 +158,10 @@ func TestParseKind(t *testing.T) {
 		msg  string
 		want store.Kind
 	}{
-		{name: "success - bare message", msg: ErrorMessage(store.NotFound, "user u1"), want: store.NotFound},
-		{name: "success - wrapped by the peer", msg: "chaincode response 500, " + ErrorMessage(store.AlreadyExists, "email"), want: store.AlreadyExists},
-		{name: "success - empty detail", msg: ErrorMessage(store.Unauthenticated, ""), want: store.Unauthenticated},
+		{name: "success - bare message", msg: ErrorMessage(store.Errf(store.NotFound, "GetUser", nil)), want: store.NotFound},
+		{name: "success - wrapped by the peer", msg: "chaincode response 500, " + ErrorMessage(store.Errf(store.AlreadyExists, "EnrollUser", nil)), want: store.AlreadyExists},
+		{name: "success - Kind wrapped before encoding", msg: ErrorMessage(fmt.Errorf("outer: %w", store.Errf(store.Unauthenticated, "SetVote", nil))), want: store.Unauthenticated},
+		{name: "error - un-Kinded error", msg: "chaincode response 500, " + ErrorMessage(errors.New("state database unavailable"))},
 		{name: "error - no prefix", msg: "chaincode response 500, boom"},
 		{name: "error - prefix with no kind separator", msg: "metacensus:not_found"},
 	}

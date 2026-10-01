@@ -1,27 +1,19 @@
 package config
 
 import (
-	"errors"
-	"maps"
-	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/metacensus/service-api-chain/internal/gateway"
 )
 
-func serviceEnv(override map[string]string) func(string) string {
-	env := map[string]string{
-		"FABRIC_PEER_ENDPOINT": "peer.example:7051",
-		"FABRIC_PEER_TLS_CA":   "/certs/ca.pem",
-		"FABRIC_MSP_ID":        "Org1MSP",
-		"FABRIC_CERT":          "/id/cert.pem",
-		"FABRIC_KEY":           "/id/key.pem",
-		"FABRIC_CHANNEL":       "metacensus",
-		"FABRIC_CHAINCODE":     "store",
-	}
-	maps.Copy(env, override)
-	return func(key string) string { return env[key] }
+var serviceBase = map[string]string{
+	"FABRIC_PEER_ENDPOINT": "peer.example:7051",
+	"FABRIC_PEER_TLS_CA":   "/certs/ca.pem",
+	"FABRIC_MSP_ID":        "Org1MSP",
+	"FABRIC_CERT":          "/id/cert.pem",
+	"FABRIC_KEY":           "/id/key.pem",
+	"FABRIC_CHANNEL":       "metacensus",
+	"FABRIC_CHAINCODE":     "store",
 }
 
 func TestLoadService(t *testing.T) {
@@ -97,28 +89,8 @@ func TestLoadService(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LoadService(serviceEnv(tt.override))
-			if tt.problems == nil {
-				if err != nil {
-					t.Fatalf("LoadService: %v", err)
-				}
-				if !reflect.DeepEqual(got, tt.want) {
-					t.Errorf("got %+v, want %+v", got, tt.want)
-				}
-				return
-			}
-			var probs problems
-			if !errors.As(err, &probs) {
-				t.Fatalf("err = %v, want problems", err)
-			}
-			if len(probs) != len(tt.problems) {
-				t.Fatalf("problems = %v, want %d", probs, len(tt.problems))
-			}
-			for i, sub := range tt.problems {
-				if !strings.Contains(probs[i], sub) {
-					t.Errorf("problem %d = %q, want it to contain %q", i, probs[i], sub)
-				}
-			}
+			got, err := LoadService(env(serviceBase, tt.override))
+			assertLoad(t, got, err, tt.want, tt.problems)
 		})
 	}
 }

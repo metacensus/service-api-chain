@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-// problems is every problem found in one pass, so a container that refuses to
-// start says so once rather than once per missing variable.
 type problems []string
 
 func (p problems) Error() string {
@@ -44,7 +42,6 @@ func (r *reader) required(key string) string {
 	return v
 }
 
-// hostPort returns the value, and records a problem when it is not host:port.
 func (r *reader) hostPort(key string) string {
 	v := r.required(key)
 	if _, _, err := net.SplitHostPort(v); v != "" && err != nil {

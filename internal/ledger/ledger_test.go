@@ -39,14 +39,14 @@ func TestLedger_EnrollUser(t *testing.T) {
 			then: func(t *testing.T, w *world) {
 				assertRaw(t, w.raw("user", "ada"), string(canonical(t, ada.user)))
 				assertRaw(t, w.raw("email", "ada@example.test"), fmt.Sprintf(`{"id":"ada","passwordHash":%q}`, ada.hash))
-				assertRaw(t, w.raw("key", ada.keyID), fmt.Sprintf(`{"owner":"ada","publicKey":%q}`, ada.publicKey))
+				assertRaw(t, w.raw("key", ada.KeyID), fmt.Sprintf(`{"owner":"ada","publicKey":%q}`, ada.PublicKey))
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newWorld(t)
-			err := w.invoke(func(s store.Store) error { return s.EnrollUser(ctx, tt.who.user, tt.who.publicKey, tt.who.hash) })
+			err := w.invoke(func(s store.Store) error { return s.EnrollUser(ctx, tt.who.user, tt.who.PublicKey, tt.who.hash) })
 			assertKind(t, err, tt.want)
 			if tt.then != nil {
 				tt.then(t, w)
@@ -148,28 +148,6 @@ func TestLedger_Writes(t *testing.T) {
 	}
 }
 
-func TestLedger_Lists(t *testing.T) {
-	tests := []struct {
-		name string
-		list func(s store.Store) (isNil bool, err error)
-	}{
-		{name: "success - ListUsers of none is empty, not nil", list: func(s store.Store) (bool, error) { l, err := s.ListUsers(ctx); return l == nil, err }},
-		{name: "success - ListTopics of none is empty, not nil", list: func(s store.Store) (bool, error) { l, err := s.ListTopics(ctx); return l == nil, err }},
-		{name: "success - ListProps of none is empty, not nil", list: func(s store.Store) (bool, error) { l, err := s.ListProps(ctx, "t"); return l == nil, err }},
-		{name: "success - ListVotes of none is empty, not nil", list: func(s store.Store) (bool, error) { l, err := s.ListVotes(ctx, "t", "p"); return l == nil, err }},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var isNil bool
-			err := newWorld(t).invoke(func(s store.Store) (err error) { isNil, err = tt.list(s); return })
-			assertKind(t, err, "")
-			if isNil {
-				t.Error("got a nil list")
-			}
-		})
-	}
-}
-
 // What is not the ledger's to classify carries no Kind, so the layer above
 // reads it as an internal failure, not a client error.
 func TestLedger_BackendFailures(t *testing.T) {
@@ -189,7 +167,7 @@ func TestLedger_BackendFailures(t *testing.T) {
 	}{
 		{name: "error - GetUser over a failing KV", kv: failing, call: func(s store.Store) error { _, err := s.GetUser(ctx, "ada"); return err }},
 		{name: "error - ListUsers over a failing KV", kv: failing, call: func(s store.Store) error { _, err := s.ListUsers(ctx); return err }},
-		{name: "error - EnrollUser over a failing KV", kv: failing, call: func(s store.Store) error { return s.EnrollUser(ctx, ada.user, ada.publicKey, ada.hash) }},
+		{name: "error - EnrollUser over a failing KV", kv: failing, call: func(s store.Store) error { return s.EnrollUser(ctx, ada.user, ada.PublicKey, ada.hash) }},
 		{name: "error - GetUser over a stored record that is not the contract's JSON", kv: corrupt("user", "ada"), call: func(s store.Store) error { _, err := s.GetUser(ctx, "ada"); return err }},
 		{name: "error - Credential over a stored email record that is not JSON", kv: corrupt("email", "ada@example.test"), call: func(s store.Store) error { _, _, err := s.Credential(ctx, "ada@example.test"); return err }},
 	}

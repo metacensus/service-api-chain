@@ -48,7 +48,6 @@ func run(m *testing.M) int {
 		return 1
 	}
 
-	t0 := time.Now()
 	srv := grpc.NewServer()
 	defer srv.Stop()
 	name, err := deployInProcess(ctx, f, srv, lis, port)
@@ -57,8 +56,6 @@ func run(m *testing.M) int {
 		f.Close(ctx)
 		return 1
 	}
-	log.Printf("chaincode deployed in %s", time.Since(t0).Round(time.Millisecond))
-
 	st, closeStore, err := gateway.Connect(f.Options(name))
 	if err != nil {
 		log.Printf("connect: %v", err)
@@ -115,12 +112,12 @@ func TestStore_Conflict(t *testing.T) {
 
 	var won, conflicted int
 	for _, err := range errs {
-		switch store.KindOf(err) {
-		case "":
+		switch {
+		case err == nil:
 			won++
-		case store.Unavailable:
+		case store.KindOf(err) == store.Unavailable:
 			conflicted++
-		case store.AlreadyExists:
+		case store.KindOf(err) == store.AlreadyExists:
 		default:
 			t.Errorf("a contender failed with an unexpected error: %v", err)
 		}

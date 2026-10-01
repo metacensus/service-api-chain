@@ -56,6 +56,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: service
           load: true
           tags: metacensus/service-api-chain:ci
           platforms: linux/amd64
@@ -65,7 +66,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.chaincode
+          target: chaincode
           load: true
           tags: metacensus/service-api-chain-chaincode:ci
           platforms: linux/amd64

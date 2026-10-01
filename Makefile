@@ -88,10 +88,10 @@ docker-build:
 
 ## docker-build-chaincode — build the chaincode image for this machine's arch
 docker-build-chaincode:
-	docker build -f Dockerfile.chaincode -t $(CHAINCODE):$(IMAGE_TAG) .
+	docker build --target chaincode -t $(CHAINCODE):$(IMAGE_TAG) .
 
 ## release — tag and push VERSION=x.y.z or the next TYPE=major|minor|patch; prompts unless YES=1
-release: scripts/version.sh
+release:
 	@set -e; \
 	VERSION=$$(./scripts/version.sh "$(VERSION)" "$(TYPE)"); \
 	TAG="v$$VERSION"; \

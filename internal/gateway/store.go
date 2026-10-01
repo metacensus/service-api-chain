@@ -120,20 +120,14 @@ func (s *chainStore) evaluate(ctx context.Context, op string, args ...string) ([
 	return out, nil
 }
 
-// newRecord makes an empty message of the record type R, a pointer type.
-func newRecord[R proto.Message]() R {
-	var r R
-	return r.ProtoReflect().New().Interface().(R)
-}
-
 func getRecord[R proto.Message](ctx context.Context, s *chainStore, op string, args ...string) (R, error) {
 	var zero R
 	out, err := s.evaluate(ctx, op, args...)
 	if err != nil {
 		return zero, err
 	}
-	rec := newRecord[R]()
-	if err := proto.Unmarshal(out, rec); err != nil {
+	rec, err := wire.DecodeRecord[R](out)
+	if err != nil {
 		return zero, failure(op, err)
 	}
 	return rec, nil
@@ -144,16 +138,9 @@ func listRecords[R proto.Message](ctx context.Context, s *chainStore, op string,
 	if err != nil {
 		return nil, err
 	}
-	items, err := wire.DecodeList(out)
+	recs, err := wire.DecodeRecords[R](out)
 	if err != nil {
 		return nil, failure(op, err)
-	}
-	recs := make([]R, len(items))
-	for i, item := range items {
-		recs[i] = newRecord[R]()
-		if err := proto.Unmarshal(item, recs[i]); err != nil {
-			return nil, failure(op, err)
-		}
 	}
 	return recs, nil
 }

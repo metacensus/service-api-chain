@@ -1,5 +1,5 @@
-//go:build integration || artifact
-
+// Package fabrictest is what the suites share: a software passkey, and under the
+// integration and artifact tags, Microfab.
 package fabrictest
 
 import (
@@ -21,7 +21,7 @@ import (
 // authenticator would.
 type Person struct {
 	key       *ecdsa.PrivateKey
-	keyID     string
+	KeyID     string
 	PublicKey string // as SignUpRequest.public_key carries it
 }
 
@@ -40,15 +40,14 @@ func NewPerson(t *testing.T) Person {
 	if err != nil {
 		t.Fatalf("encode the key: %v", err)
 	}
-	return Person{key: key, keyID: keyID, PublicKey: publicKey}
+	return Person{key: key, KeyID: keyID, PublicKey: publicKey}
 }
 
-// Sign signs content as an assertion made at origin.
 func (p Person) Sign(t *testing.T, origin string, content proto.Message) (*v1.Interpretation, *v1.Signature) {
 	t.Helper()
 	interp := signing.Interpretation(content)
 	at := timestamppb.New(time.Unix(1_700_000_000, 0).UTC())
-	challenge, err := signing.UserChallenge(content, interp, p.keyID, at)
+	challenge, err := signing.UserChallenge(content, interp, p.KeyID, at)
 	if err != nil {
 		t.Fatalf("compute the challenge: %v", err)
 	}
@@ -57,10 +56,9 @@ func (p Person) Sign(t *testing.T, origin string, content proto.Message) (*v1.In
 	if err != nil {
 		t.Fatalf("assert: %v", err)
 	}
-	return interp, &v1.Signature{KeyId: p.keyID, Time: at, Assertion: assertion}
+	return interp, &v1.Signature{KeyId: p.KeyID, Time: at, Assertion: assertion}
 }
 
-// User is a signed enrolment record for p.
 func (p Person) User(t *testing.T, origin, id, email string) *v1.UserSigned {
 	t.Helper()
 	content := &v1.User{Name: "Integration", Email: email, Country: "GB"}

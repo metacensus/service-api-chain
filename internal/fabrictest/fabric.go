@@ -1,7 +1,5 @@
 //go:build integration || artifact
 
-// Package fabrictest is the Microfab plumbing the adapter tests
-// (internal/gateway) and the artifact suite (integration/) share.
 package fabrictest
 
 import (
@@ -65,7 +63,6 @@ type Fab struct {
 // Start starts Microfab on a fresh network; containers reach hostPorts of this process at HostAlias.
 // A failure tears down whatever started.
 func Start(ctx context.Context, hostPorts ...int) (*Fab, error) {
-	t0 := time.Now()
 	f, err := start(ctx, hostPorts)
 	if err != nil {
 		if f != nil {
@@ -74,7 +71,6 @@ func Start(ctx context.Context, hostPorts ...int) (*Fab, error) {
 		}
 		return nil, err
 	}
-	log.Printf("Microfab started in %s", time.Since(t0).Round(time.Millisecond))
 	return f, nil
 }
 
@@ -133,8 +129,6 @@ func start(ctx context.Context, hostPorts []int) (*Fab, error) {
 	return f, nil
 }
 
-// fetchAdmin writes Org1's admin certificate and key where Options
-// reads them, and builds the signing identity that deploys chaincode.
 func (f *Fab) fetchAdmin(addr string) error {
 	resp, err := http.Get("http://" + addr + "/ak/api/v1/components")
 	if err != nil {
@@ -214,7 +208,6 @@ func Pack(label, address string) (pkg []byte, pkgID string, err error) {
 	return pkg, pkgID, err
 }
 
-// Define installs pkg, approves it and commits it as name.
 func (f *Fab) Define(ctx context.Context, name string, pkg []byte, pkgID string) error {
 	if _, err := fabcc.NewPeer(f.conn, f.admin).Install(ctx, bytes.NewReader(pkg)); err != nil {
 		return fmt.Errorf("install: %w", err)
@@ -252,9 +245,7 @@ func (f *Fab) Run(m *testing.M) int {
 }
 
 func (f *Fab) Close(ctx context.Context) {
-	if f.adminDir != "" {
-		_ = os.RemoveAll(f.adminDir)
-	}
+	_ = os.RemoveAll(f.adminDir)
 	if f.conn != nil {
 		_ = f.conn.Close()
 	}

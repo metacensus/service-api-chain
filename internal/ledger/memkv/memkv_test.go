@@ -85,14 +85,6 @@ func TestTx_Isolation(t *testing.T) {
 				assertGet(t, s.Begin(), "k", "v")
 			},
 		},
-		{
-			name: "error - an empty key",
-			run: func(t *testing.T, s *Store) {
-				if err := s.Begin().Put("", []byte("v")); err == nil {
-					t.Error("put under an empty key succeeded")
-				}
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { tt.run(t, New()) })

@@ -5,8 +5,8 @@
 //
 // A transaction is named for the store.Store method it carries and takes that
 // method's arguments in order, without ctx: a record as Record encodes it,
-// anything else as a UTF-8 string. A read answers with one record, or with an
-// EncodeList of its results — Credential's being [id, passwordHash].
+// anything else as a UTF-8 string. A read answers with one Record, a list with
+// EncodeRecords, and Credential with an EncodeList of [id, passwordHash].
 package wire
 
 import (
@@ -35,10 +35,44 @@ const (
 	ListVotes   = "ListVotes"
 )
 
-// Record encodes m deterministically, so endorsing peers running one chaincode
-// build agree on the bytes they write and return.
+// Record encodes m deterministically, so endorsing peers return the same bytes.
 func Record(m proto.Message) ([]byte, error) {
 	return proto.MarshalOptions{Deterministic: true}.Marshal(m)
+}
+
+func DecodeRecord[R proto.Message](b []byte) (R, error) {
+	var r R
+	r = r.ProtoReflect().New().Interface().(R)
+	if err := proto.Unmarshal(b, r); err != nil {
+		var zero R
+		return zero, err
+	}
+	return r, nil
+}
+
+func EncodeRecords[R proto.Message](recs []R) ([]byte, error) {
+	items := make([][]byte, len(recs))
+	for i, r := range recs {
+		var err error
+		if items[i], err = Record(r); err != nil {
+			return nil, err
+		}
+	}
+	return EncodeList(items), nil
+}
+
+func DecodeRecords[R proto.Message](b []byte) ([]R, error) {
+	items, err := DecodeList(b)
+	if err != nil {
+		return nil, err
+	}
+	recs := make([]R, len(items))
+	for i, item := range items {
+		if recs[i], err = DecodeRecord[R](item); err != nil {
+			return nil, err
+		}
+	}
+	return recs, nil
 }
 
 func EncodeEnrollUser(record *v1.UserSigned, publicKey, passwordHash string) ([][]byte, error) {
@@ -141,8 +175,12 @@ func DecodeList(b []byte) ([][]byte, error) {
 // wrapping reliably; the message does.
 const errorPrefix = "metacensus:"
 
-func ErrorMessage(kind store.Kind, detail string) string {
-	return errorPrefix + string(kind) + ": " + detail
+// ErrorMessage writes err's store.Kind, if any, where ParseKind finds it.
+func ErrorMessage(err error) string {
+	if kind := store.KindOf(err); kind != "" {
+		return errorPrefix + string(kind) + ": " + err.Error()
+	}
+	return err.Error()
 }
 
 // ParseKind finds the Kind ErrorMessage wrote anywhere in msg, or "" if there

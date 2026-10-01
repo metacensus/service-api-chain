@@ -36,11 +36,11 @@ func mustRecord(t *testing.T, m proto.Message) []byte {
 
 func mustList(t *testing.T, ms ...proto.Message) []byte {
 	t.Helper()
-	items := make([][]byte, len(ms))
-	for i, m := range ms {
-		items[i] = mustRecord(t, m)
+	b, err := wire.EncodeRecords(ms)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return wire.EncodeList(items)
+	return b
 }
 
 func assertCall(t *testing.T, f *fakeContract, submit bool, name string, wantArgs [][]byte) {
@@ -114,7 +114,7 @@ func TestStore_Writes(t *testing.T) {
 		})
 
 		t.Run("error - "+tt.method+" classified from the chaincode", func(t *testing.T) {
-			f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.AlreadyExists, "dup"))}
+			f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Errf(store.AlreadyExists, "dup", nil)))}
 			err := tt.call(newStore(f))
 			assertKind(t, err, store.AlreadyExists)
 		})
@@ -143,7 +143,7 @@ func TestStore_Credential(t *testing.T) {
 		{name: "success - id and hash", out: wire.EncodeList([][]byte{[]byte("u1"), []byte("h")}), wantID: "u1", wantHash: "h"},
 		{name: "error - one item", out: wire.EncodeList([][]byte{[]byte("u1")}), wantErr: true},
 		{name: "error - malformed list", out: []byte{0xff}, wantErr: true},
-		{name: "error - unauthenticated from the chaincode", err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Unauthenticated, "x")), wantKind: store.Unauthenticated, wantErr: true},
+		{name: "error - unauthenticated from the chaincode", err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Errf(store.Unauthenticated, "x", nil))), wantKind: store.Unauthenticated, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -182,7 +182,7 @@ func runGet[R proto.Message](t *testing.T, tt getCase[R]) {
 		}
 	})
 	t.Run("error - "+tt.name+" not found", func(t *testing.T) {
-		f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.NotFound, "x"))}
+		f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.Errf(store.NotFound, "x", nil)))}
 		_, err := tt.call(newStore(f))
 		assertKind(t, err, store.NotFound)
 	})

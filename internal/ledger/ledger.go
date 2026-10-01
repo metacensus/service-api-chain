@@ -1,7 +1,7 @@
 // Package ledger is store.Store over Fabric world state. One is built per
 // chaincode invocation, whose reads do not see its own writes, so every check
 // precedes every Put. Signed records are stored as signing.Canonical bytes
-// (RFC 8785; protojson's output is not stable across builds) so endorsing
+// (protojson's output is not stable across builds) so endorsing
 // peers write the same bytes, and nothing here reads a clock, draws
 // randomness, or ranges over a map.
 package ledger
@@ -29,8 +29,7 @@ type KV interface {
 	Put(key string, value []byte) error
 	// Scan returns the values under a partial composite key, in key order.
 	Scan(objectType string, attrs ...string) (iter.Seq2[[]byte, error], error)
-	// Key builds a composite key; it fails on an attribute the world state
-	// cannot hold.
+	// Key fails on an attribute the world state cannot hold.
 	Key(objectType string, attrs ...string) (string, error)
 }
 
@@ -145,7 +144,7 @@ func list[M proto.Message](l *ledger, o op, objectType string, attrs ...string) 
 	if err != nil {
 		return nil, o.wrap(err)
 	}
-	out := []M{}
+	var out []M
 	for b, err := range seq {
 		if err != nil {
 			return nil, o.wrap(err)

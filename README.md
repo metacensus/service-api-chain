@@ -4,8 +4,8 @@ The MetaCensus API over Hyperledger Fabric. It implements [`metacensus/api`](htt
 
 The store spans two deployables, built from this one module:
 
-- **the API** (`cmd/service`, `Dockerfile`), which reaches the peers through a Fabric gateway;
-- **the chaincode** (`cmd/chaincode`, `Dockerfile.chaincode`), chaincode-as-a-service the peers dial.
+- **the API** (`cmd/service`, `Dockerfile` target `service`), which reaches the peers through a Fabric gateway;
+- **the chaincode** (`cmd/chaincode`, target `chaincode`), chaincode-as-a-service the peers dial.
 
 Design decisions are in [AGENTS.md](AGENTS.md).
 
@@ -36,12 +36,10 @@ The chaincode:
 | `ALLOWED_ORIGINS` | Comma-separated WebAuthn origins a participant signature may name. |
 | `CHAINCODE_TLS_CERT`, `CHAINCODE_TLS_KEY`, `CHAINCODE_TLS_CLIENT_CA` | Server TLS, optionally mutual. Required unless `CHAINCODE_PLAINTEXT=1`. |
 
-Both refuse to start on invalid configuration, reporting every problem at once.
-
 ## Tests
 
-`make test` runs the unit tests. `make test-integration` and `make test-artifact` run on [Microfab](https://github.com/hyperledger-labs/microfab) and need Docker. `make help` lists every target; `make check` runs what CI's build runs.
+`make help` lists the targets; `make check` runs what CI's build runs.
 
 ## Releasing
 
-`make release-patch` / `release-minor` / `release-major` tag and push; `release.yml` re-runs CI at the tag and publishes `docker.io/metacensus/service-api-chain` and `docker.io/metacensus/service-api-chain-chaincode` for amd64 and arm64. It needs the `DOCKERHUB_TOKEN` secret, a Docker Hub organization access token with write access to both repositories.
+`make release-patch` / `-minor` / `-major` tag and push; the tag publishes `docker.io/metacensus/service-api-chain` and `service-api-chain-chaincode`. Publishing needs the `DOCKERHUB_TOKEN` secret, an organization token with write access to both.

@@ -88,11 +88,5 @@ func list[R proto.Message](args [][]byte, n int, f func(a []string) ([]R, error)
 	if err != nil {
 		return nil, err
 	}
-	items := make([][]byte, len(recs))
-	for i, r := range recs {
-		if items[i], err = wire.Record(r); err != nil {
-			return nil, err
-		}
-	}
-	return wire.EncodeList(items), nil
+	return wire.EncodeRecords(recs)
 }

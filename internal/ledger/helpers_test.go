@@ -2,9 +2,6 @@ package ledger_test
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"errors"
 	"iter"
 	"testing"
@@ -17,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/metacensus/service-api-chain/internal/fabrictest"
 	"github.com/metacensus/service-api-chain/internal/ledger"
 	"github.com/metacensus/service-api-chain/internal/ledger/memkv"
 )
@@ -27,26 +25,14 @@ var (
 )
 
 type person struct {
-	key       *ecdsa.PrivateKey
-	keyID     string
-	publicKey string
-	hash      string
-	user      *v1.UserSigned
+	fabrictest.Person
+	hash string
+	user *v1.UserSigned
 }
 
 func newPerson(t *testing.T, id string) *person {
 	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := &person{key: key, hash: "hash-of-" + id}
-	if p.keyID, err = signing.KeyID(&key.PublicKey); err != nil {
-		t.Fatal(err)
-	}
-	if p.publicKey, err = signing.EncodePublicKey(&key.PublicKey); err != nil {
-		t.Fatal(err)
-	}
+	p := &person{Person: fabrictest.NewPerson(t), hash: "hash-of-" + id}
 	content := &v1.User{Name: id, Email: id + "@example.test", Country: "GB"}
 	interp, sig := p.sign(t, content)
 	p.user = &v1.UserSigned{Id: id, Recorded: at, Content: content, Interpretation: interp, UserSignature: sig}
@@ -54,18 +40,7 @@ func newPerson(t *testing.T, id string) *person {
 }
 
 func (p *person) sign(t *testing.T, content proto.Message) (*v1.Interpretation, *v1.Signature) {
-	t.Helper()
-	interp := signing.Interpretation(content)
-	challenge, err := signing.UserChallenge(content, interp, p.keyID, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	authData := signing.AuthenticatorData(storetest.RPID, signing.FlagUP|signing.FlagUV)
-	assertion, err := signing.Assert(p.key, challenge, authData, signing.ClientData{Type: signing.TypeGet, Origin: storetest.Origin})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return interp, &v1.Signature{KeyId: p.keyID, Time: at, Assertion: assertion}
+	return p.Sign(t, storetest.Origin, content)
 }
 
 func (p *person) topic(t *testing.T, id string) *v1.TopicSigned {
@@ -109,7 +84,7 @@ func (w *world) must(f func(store.Store) error) {
 
 func (w *world) enroll(p *person) {
 	w.t.Helper()
-	w.must(func(s store.Store) error { return s.EnrollUser(context.Background(), p.user, p.publicKey, p.hash) })
+	w.must(func(s store.Store) error { return s.EnrollUser(context.Background(), p.user, p.PublicKey, p.hash) })
 }
 
 func (w *world) topic(p *person, id string) *v1.TopicSigned {
@@ -157,7 +132,7 @@ func canonical(t *testing.T, m proto.Message) []byte {
 
 func assertKind(t *testing.T, err error, want store.Kind) {
 	t.Helper()
-	if got := store.KindOf(err); got != want || (want == "" && err != nil) || (want != "" && err == nil) {
+	if got := store.KindOf(err); got != want || (want == "" && err != nil) {
 		t.Fatalf("want Kind %q, got %v (Kind %q)", want, err, got)
 	}
 }
