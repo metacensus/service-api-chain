@@ -20,7 +20,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// KV is the world state as one invocation sees it.
+// KV is the world state as one invocation sees it: the seam instead of the
+// shim's stub, which is too wide to fake and has no shimtest in
+// fabric-chaincode-go/v2.
 type KV interface {
 	// Get returns nil, nil when the key is absent.
 	Get(key string) ([]byte, error)
