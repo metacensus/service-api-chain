@@ -8,19 +8,17 @@ import (
 	"strings"
 )
 
-// Error carries every problem found in one pass, so a container that refuses
-// to start says so once rather than once per missing variable.
-type Error struct {
-	Problems []string
-}
+// problems is every problem found in one pass, so a container that refuses to
+// start says so once rather than once per missing variable.
+type problems []string
 
-func (e *Error) Error() string {
-	return "invalid configuration:\n  - " + strings.Join(e.Problems, "\n  - ")
+func (p problems) Error() string {
+	return "invalid configuration:\n  - " + strings.Join(p, "\n  - ")
 }
 
 type reader struct {
 	getenv   func(string) string
-	problems []string
+	problems problems
 }
 
 func (r *reader) problemf(format string, args ...any) {
@@ -31,7 +29,7 @@ func (r *reader) err() error {
 	if len(r.problems) == 0 {
 		return nil
 	}
-	return &Error{Problems: r.problems}
+	return r.problems
 }
 
 func (r *reader) optional(key string) string {

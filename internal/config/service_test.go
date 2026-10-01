@@ -107,16 +107,16 @@ func TestLoadService(t *testing.T) {
 				}
 				return
 			}
-			var cerr *Error
-			if !errors.As(err, &cerr) {
-				t.Fatalf("err = %v, want *Error", err)
+			var probs problems
+			if !errors.As(err, &probs) {
+				t.Fatalf("err = %v, want problems", err)
 			}
-			if len(cerr.Problems) != len(tt.problems) {
-				t.Fatalf("problems = %v, want %d", cerr.Problems, len(tt.problems))
+			if len(probs) != len(tt.problems) {
+				t.Fatalf("problems = %v, want %d", probs, len(tt.problems))
 			}
 			for i, sub := range tt.problems {
-				if !strings.Contains(cerr.Problems[i], sub) {
-					t.Errorf("problem %d = %q, want it to contain %q", i, cerr.Problems[i], sub)
+				if !strings.Contains(probs[i], sub) {
+					t.Errorf("problem %d = %q, want it to contain %q", i, probs[i], sub)
 				}
 			}
 		})

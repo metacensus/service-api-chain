@@ -5,7 +5,7 @@ The MetaCensus API over Hyperledger Fabric. It implements [`metacensus/api`](htt
 The store spans two deployables, built from this one module:
 
 - **the API** (`cmd/service`, `Dockerfile`), which reaches the peers through a Fabric gateway;
-- **the chaincode** (`cmd/chaincode`, `Dockerfile.chaincode`), chaincode-as-a-service the peers dial; it verifies signatures against `ALLOWED_ORIGINS`.
+- **the chaincode** (`cmd/chaincode`, `Dockerfile.chaincode`), chaincode-as-a-service the peers dial.
 
 Design decisions are in [AGENTS.md](AGENTS.md).
 
@@ -40,7 +40,7 @@ Both refuse to start on invalid configuration, reporting every problem at once.
 
 ## Tests
 
-`make test` runs the unit tests. `make test-adapter` and `make test-artifact` run on [Microfab](https://github.com/hyperledger-labs/microfab) and need Docker; `make test-integration` runs both. `make help` lists every target; `make check` runs what CI's check job runs.
+`make test` runs the unit tests. `make test-integration` and `make test-artifact` run on [Microfab](https://github.com/hyperledger-labs/microfab) and need Docker. `make help` lists every target; `make check` runs what CI's build runs.
 
 ## Releasing
 

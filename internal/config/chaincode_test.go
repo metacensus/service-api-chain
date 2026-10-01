@@ -116,16 +116,16 @@ func TestLoadChaincode(t *testing.T) {
 				}
 				return
 			}
-			var cfgErr *Error
-			if !errors.As(err, &cfgErr) {
-				t.Fatalf("err = %v, want *Error", err)
+			var probs problems
+			if !errors.As(err, &probs) {
+				t.Fatalf("err = %v, want problems", err)
 			}
-			if len(cfgErr.Problems) != len(tt.problems) {
-				t.Fatalf("problems = %q, want %d", cfgErr.Problems, len(tt.problems))
+			if len(probs) != len(tt.problems) {
+				t.Fatalf("problems = %q, want %d", probs, len(tt.problems))
 			}
 			for i, want := range tt.problems {
-				if !strings.Contains(cfgErr.Problems[i], want) {
-					t.Errorf("problem %d = %q, want it to contain %q", i, cfgErr.Problems[i], want)
+				if !strings.Contains(probs[i], want) {
+					t.Errorf("problem %d = %q, want it to contain %q", i, probs[i], want)
 				}
 			}
 		})
