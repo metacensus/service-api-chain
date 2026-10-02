@@ -30,10 +30,11 @@ type person struct {
 	user *v1.UserSigned
 }
 
-func newPerson(t *testing.T, id string) *person {
+func newPerson(t *testing.T, name string) *person {
 	t.Helper()
-	p := &person{Person: fabrictest.NewPerson(t), hash: "hash-of-" + id}
-	content := &v1.User{Name: id, Email: id + "@example.test", Country: "GB"}
+	p := &person{Person: fabrictest.NewPerson(t), hash: "hash-of-" + name}
+	id := store.NewID(store.UserID)
+	content := &v1.User{Name: name, Email: name + "@example.test", Country: "GB"}
 	interp, sig := p.sign(t, content)
 	p.user = &v1.UserSigned{Id: id, Recorded: at, Content: content, Interpretation: interp, UserSignature: sig}
 	return p

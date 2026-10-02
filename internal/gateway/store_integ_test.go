@@ -99,7 +99,7 @@ func TestStore_Conflict(t *testing.T) {
 	start := make(chan struct{})
 	for i := range errs {
 		p := fabrictest.NewPerson(t)
-		user := p.User(t, storetest.Origin, fabrictest.Unique("user"), email)
+		user := p.User(t, storetest.Origin, store.NewID(store.UserID), email)
 		wg.Go(func() {
 			<-start
 			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

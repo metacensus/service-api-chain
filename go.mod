@@ -7,7 +7,7 @@ require (
 	github.com/hyperledger/fabric-chaincode-go/v2 v2.3.0
 	github.com/hyperledger/fabric-gateway v1.12.1
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
-	github.com/metacensus/api v0.5.0
+	github.com/metacensus/api v0.6.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12

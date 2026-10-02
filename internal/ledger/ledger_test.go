@@ -20,7 +20,12 @@ const unholdable = "bad\x00id"
 
 func TestLedger_EnrollUser(t *testing.T) {
 	ada := newPerson(t, "ada")
-	nulUserID := newPerson(t, unholdable)
+	nulUserID := newPerson(t, "nul")
+	nulUserID.user.Id = unholdable
+	topicKindID := newPerson(t, "carl")
+	topicKindID.user.Id = store.NewID(store.TopicID)
+	notV7 := newPerson(t, "dee")
+	notV7.user.Id = "user:00000000-0000-4000-8000-000000000000"
 	nulEmail := newPerson(t, "bob")
 	nulEmail.user.Content.Email = "a\x00b@example.test"
 	nulEmail.user.Interpretation, nulEmail.user.UserSignature = nulEmail.sign(t, nulEmail.user.Content)
@@ -33,13 +38,16 @@ func TestLedger_EnrollUser(t *testing.T) {
 	}{
 		{name: "error - email the world state cannot hold", who: nulEmail, want: store.InvalidContent},
 		{name: "error - id the world state cannot hold", who: nulUserID, want: store.InvalidContent},
+		{name: "error - id of another kind", who: topicKindID, want: store.InvalidContent},
+		{name: "error - id that is not a UUIDv7", who: notV7, want: store.InvalidContent},
 		{
 			name: "success - stores the user as canonical JSON, the email and the key as JSON",
 			who:  ada,
 			then: func(t *testing.T, w *world) {
-				assertRaw(t, w.raw("user", "ada"), string(canonical(t, ada.user)))
-				assertRaw(t, w.raw("email", "ada@example.test"), fmt.Sprintf(`{"id":"ada","passwordHash":%q}`, ada.hash))
-				assertRaw(t, w.raw("key", ada.KeyID), fmt.Sprintf(`{"owner":"ada","publicKey":%q}`, ada.PublicKey))
+				id := ada.user.GetId()
+				assertRaw(t, w.raw("user", id), string(canonical(t, ada.user)))
+				assertRaw(t, w.raw("email", "ada@example.test"), fmt.Sprintf(`{"id":%q,"passwordHash":%q}`, id, ada.hash))
+				assertRaw(t, w.raw("key", ada.KeyID), fmt.Sprintf(`{"owner":%q,"publicKey":%q}`, id, ada.PublicKey))
 			},
 		},
 	}
@@ -77,9 +85,15 @@ func TestLedger_Reads(t *testing.T) {
 
 func TestLedger_Writes(t *testing.T) {
 	ada := newPerson(t, "ada")
-	forgedKeyID := ada.topic(t, "t")
+	caller := ada.user.GetId()
+	topicID := store.NewID(store.TopicID)
+	propID := store.NewID(store.PropID)
+	forgedKeyID := ada.topic(t, topicID)
 	forgedKeyID.UserSignature.KeyId = unholdable
-	topic := ada.topic(t, "t")
+	topic := ada.topic(t, topicID)
+	// A caller who is not the author is Unauthenticated whatever else is wrong
+	// with the record, so a malformed id must not mask it.
+	badIDForeign := ada.topic(t, "not-an-id")
 
 	tests := []struct {
 		name string
@@ -89,48 +103,91 @@ func TestLedger_Writes(t *testing.T) {
 	}{
 		{
 			name: "error - CreateTopic key_id the world state cannot hold is Unauthenticated",
-			call: func(w *world, s store.Store) error { return s.CreateTopic(ctx, "ada", forgedKeyID) },
+			call: func(w *world, s store.Store) error { return s.CreateTopic(ctx, caller, forgedKeyID) },
+			want: store.Unauthenticated,
+		},
+		{
+			name: "error - CreateTopic by a caller who is not the author is Unauthenticated whatever the id",
+			call: func(w *world, s store.Store) error {
+				return s.CreateTopic(ctx, store.NewID(store.UserID), badIDForeign)
+			},
 			want: store.Unauthenticated,
 		},
 		{
 			name: "error - CreateTopic id the world state cannot hold",
-			call: func(w *world, s store.Store) error { return s.CreateTopic(ctx, "ada", ada.topic(t, unholdable)) },
+			call: func(w *world, s store.Store) error { return s.CreateTopic(ctx, caller, ada.topic(t, unholdable)) },
+			want: store.InvalidContent,
+		},
+		{
+			name: "error - CreateTopic id that is not a topic id",
+			call: func(w *world, s store.Store) error { return s.CreateTopic(ctx, caller, ada.topic(t, "t")) },
+			want: store.InvalidContent,
+		},
+		{
+			name: "error - CreateTopic id of another kind",
+			call: func(w *world, s store.Store) error {
+				return s.CreateTopic(ctx, caller, ada.topic(t, store.NewID(store.PropID)))
+			},
+			want: store.InvalidContent,
+		},
+		{
+			name: "error - CreateProp by a caller who is not the author is Unauthenticated whatever the id",
+			call: func(w *world, s store.Store) error {
+				w.topic(ada, topicID)
+				return s.CreateProp(ctx, store.NewID(store.UserID), ada.prop(t, topicID, "not-an-id"))
+			},
+			want: store.Unauthenticated,
+		},
+		{
+			name: "error - CreateProp id that is not a prop id",
+			call: func(w *world, s store.Store) error {
+				w.topic(ada, topicID)
+				return s.CreateProp(ctx, caller, ada.prop(t, topicID, "p"))
+			},
+			want: store.InvalidContent,
+		},
+		{
+			name: "error - CreateProp id of another kind",
+			call: func(w *world, s store.Store) error {
+				w.topic(ada, topicID)
+				return s.CreateProp(ctx, caller, ada.prop(t, topicID, store.NewID(store.TopicID)))
+			},
 			want: store.InvalidContent,
 		},
 		{
 			name: "error - CreateProp topic id the world state cannot hold",
-			call: func(w *world, s store.Store) error { return s.CreateProp(ctx, "ada", ada.prop(t, unholdable, "p")) },
+			call: func(w *world, s store.Store) error { return s.CreateProp(ctx, caller, ada.prop(t, unholdable, propID)) },
 			want: store.InvalidContent,
 		},
 		{
 			name: "error - CreateProp id the world state cannot hold",
 			call: func(w *world, s store.Store) error {
-				w.topic(ada, "t")
-				return s.CreateProp(ctx, "ada", ada.prop(t, "t", unholdable))
+				w.topic(ada, topicID)
+				return s.CreateProp(ctx, caller, ada.prop(t, topicID, unholdable))
 			},
 			want: store.InvalidContent,
 		},
 		{
 			name: "error - SetVote topic the world state cannot hold",
 			call: func(w *world, s store.Store) error {
-				return s.SetVote(ctx, "ada", ada.vote(t, unholdable, "p", v1.Vote_For))
+				return s.SetVote(ctx, caller, ada.vote(t, unholdable, propID, v1.Vote_For))
 			},
 			want: store.InvalidContent,
 		},
 		{
 			name: "success - CreateTopic stores canonical JSON",
-			call: func(w *world, s store.Store) error { return s.CreateTopic(ctx, "ada", topic) },
-			then: func(t *testing.T, w *world) { assertRaw(t, w.raw("topic", "t"), string(canonical(t, topic))) },
+			call: func(w *world, s store.Store) error { return s.CreateTopic(ctx, caller, topic) },
+			then: func(t *testing.T, w *world) { assertRaw(t, w.raw("topic", topicID), string(canonical(t, topic))) },
 		},
 		{
 			name: "success - CreateProp is stored under (topic, prop)",
 			call: func(w *world, s store.Store) error {
-				w.topic(ada, "t")
-				return s.CreateProp(ctx, "ada", ada.prop(t, "t", "p"))
+				w.topic(ada, topicID)
+				return s.CreateProp(ctx, caller, ada.prop(t, topicID, propID))
 			},
 			then: func(t *testing.T, w *world) {
-				if w.raw("prop", "t", "p") == nil {
-					t.Error("prop not stored under (t, p)")
+				if w.raw("prop", topicID, propID) == nil {
+					t.Error("prop not stored under (topic, prop)")
 				}
 			},
 		},

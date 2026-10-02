@@ -68,8 +68,8 @@ github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e h1:Q6MvJtQK/iRcRt
 github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/magiconair/properties v1.8.10 h1:s31yESBquKXCV9a/ScB3ESkOjUYYv+X0rg8SYxI99mE=
 github.com/magiconair/properties v1.8.10/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=
-github.com/metacensus/api v0.5.0 h1:/XxlpLMMGGQkiNgkATZ+AglzDHkNuzjldvK95cZEVlI=
-github.com/metacensus/api v0.5.0/go.mod h1:CfaZ3iHoOIloOFOcAs3UKDFBexw68sAf4kcQu3xTJno=
+github.com/metacensus/api v0.6.0 h1:jhU/HFMwc9wktTfJxtRcWSZJzaVgDuBwCSMb5ign7e4=
+github.com/metacensus/api v0.6.0/go.mod h1:P0iFFVGufM9gODqCa56sSBqH5PbyQz3ZH+GW23Nu/88=
 github.com/miekg/pkcs11 v1.1.2 h1:/VxmeAX5qU6Q3EwafypogwWbYryHFmF2RpkJmw3m4MQ=
 github.com/miekg/pkcs11 v1.1.2/go.mod h1:XsNlhZGX73bx86s2hdc/FuaLm2CPZJemRLMA+WTFxgs=
 github.com/moby/docker-image-spec v1.3.1 h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0=
