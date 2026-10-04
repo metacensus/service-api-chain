@@ -175,6 +175,15 @@ func read[M proto.Message](l *ledger, o op, objectType string, attrs ...string) 
 	return m, nil
 }
 
+// validID refuses an id that is not "<kind>:<UUIDv7>". The ledger is where the
+// store contract is authoritative, so this is checked here, not in the gateway.
+func validID(o op, kind store.IDKind, id string) error {
+	if _, err := store.ParseID(kind, id); err != nil {
+		return o.kind(store.InvalidContent, err)
+	}
+	return nil
+}
+
 func (l *ledger) authorize(o op, callerID string, content proto.Message, interp *v1.Interpretation, sig *v1.Signature) error {
 	k, err := l.kv.Key(keyType, sig.GetKeyId())
 	if err != nil {
@@ -204,6 +213,9 @@ func (l *ledger) stands(o op, pub *ecdsa.PublicKey, content proto.Message, inter
 
 func (l *ledger) EnrollUser(_ context.Context, record *v1.UserSigned, publicKey, passwordHash string) error {
 	const o = op("EnrollUser")
+	if err := validID(o, store.UserID, record.GetId()); err != nil {
+		return err
+	}
 	sig := record.GetUserSignature()
 	pub, err := signing.EnrolledKey(publicKey, sig.GetKeyId())
 	if err != nil {
@@ -268,6 +280,9 @@ func (l *ledger) CreateTopic(_ context.Context, callerID string, record *v1.Topi
 	if err := l.authorize(o, callerID, record.GetContent(), record.GetInterpretation(), record.GetUserSignature()); err != nil {
 		return err
 	}
+	if err := validID(o, store.TopicID, record.GetId()); err != nil {
+		return err
+	}
 	k, err := l.key(o, topicType, record.GetId())
 	if err != nil {
 		return err
@@ -289,6 +304,9 @@ func (l *ledger) ListTopics(_ context.Context) ([]*v1.TopicSigned, error) {
 func (l *ledger) CreateProp(_ context.Context, callerID string, record *v1.PropSigned) error {
 	const o = op("CreateProp")
 	if err := l.authorize(o, callerID, record.GetContent(), record.GetInterpretation(), record.GetUserSignature()); err != nil {
+		return err
+	}
+	if err := validID(o, store.PropID, record.GetId()); err != nil {
 		return err
 	}
 	topicID := record.GetContent().GetTopicId()
