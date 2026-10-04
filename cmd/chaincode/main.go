@@ -34,9 +34,12 @@ func run(logger *slog.Logger) error {
 	}
 
 	srv := &shim.ChaincodeServer{
-		CCID:     cfg.ID,
-		Address:  cfg.Address,
-		CC:       chaincode.New(signing.ParticipantPolicy(cfg.AllowedOrigins...)),
+		CCID:    cfg.ID,
+		Address: cfg.Address,
+		CC: chaincode.New(signing.ParticipantPolicy(cfg.AllowedOrigins...), chaincode.Config{
+			GlobalChannel:   cfg.GlobalChannel,
+			GlobalChaincode: cfg.GlobalChaincode,
+		}),
 		TLSProps: tlsProps,
 	}
 	logger.Info("serving", slog.String("ccid", cfg.ID), slog.String("addr", cfg.Address), slog.Bool("tls", !cfg.Plaintext))

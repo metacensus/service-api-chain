@@ -7,6 +7,11 @@
 // method's arguments in order, without ctx: a record as Record encodes it,
 // anything else as a UTF-8 string. A read answers with one Record, a list with
 // EncodeRecords, and Credential with an EncodeList of [id, passwordHash].
+//
+// GetKey carries no store method: it is what the chaincode on a topic channel
+// asks the chaincode on the global channel, to resolve a signature's key_id
+// (see internal/ledger.Global). It takes the key_id and answers with an
+// EncodeList of [owner, publicKey], or NotFound.
 package wire
 
 import (
@@ -33,6 +38,7 @@ const (
 	ListProps   = "ListProps"
 	SetVote     = "SetVote"
 	ListVotes   = "ListVotes"
+	GetKey      = "GetKey"
 )
 
 // Record encodes m deterministically, so endorsing peers return the same bytes.

@@ -15,6 +15,8 @@ type Options struct {
 	CertFile string
 	KeyFile  string
 
+	// Channel holds users and topics; Chaincode is the store's chaincode as
+	// defined there and on every topic channel.
 	Channel   string
 	Chaincode string
 }

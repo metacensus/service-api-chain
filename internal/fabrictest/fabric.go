@@ -19,6 +19,7 @@ import (
 
 	fabcc "github.com/hyperledger/fabric-admin-sdk/pkg/chaincode"
 	"github.com/hyperledger/fabric-admin-sdk/pkg/identity"
+	"github.com/hyperledger/fabric-config/configtx"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -37,6 +38,10 @@ const (
 	// the trailers of an error response.
 	microfabPort = "8080/tcp"
 	peerPort     = "2000/tcp"
+	// The orderer's own gRPC port (ORDERER_GENERAL_LISTENPORT inside the
+	// container, not listed by its components API; 2004 is its operations
+	// port). Dialled directly for the same reason as the peer.
+	ordererPort = "2003/tcp"
 
 	// HostAlias is how a container reaches this process's HostAccessPorts.
 	HostAlias = "host.testcontainers.internal"
@@ -56,7 +61,9 @@ type Fab struct {
 	container testcontainers.Container
 	peerAddr  string // host:port of the peer itself, from this process
 	admin     identity.SigningIdentity
-	conn      *grpc.ClientConn
+	signer    *configtx.SigningIdentity // the same admin, as fabric-config signs with it
+	conn      *grpc.ClientConn          // the peer
+	orderer   *grpc.ClientConn
 	adminDir  string
 }
 
@@ -84,7 +91,7 @@ func start(ctx context.Context, hostPorts []int) (*Fab, error) {
 	f.container, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:           "ghcr.io/hyperledger-labs/microfab:latest",
-			ExposedPorts:    []string{microfabPort, peerPort},
+			ExposedPorts:    []string{microfabPort, peerPort, ordererPort},
 			Env:             map[string]string{"MICROFAB_CONFIG": microfabConfig},
 			Networks:        []string{nw.Name},
 			NetworkAliases:  map[string][]string{nw.Name: {microfabAlias}},
@@ -111,6 +118,11 @@ func start(ctx context.Context, hostPorts []int) (*Fab, error) {
 		return f, err
 	}
 	f.peerAddr = net.JoinHostPort(host, peer.Port())
+	orderer, err := f.container.MappedPort(ctx, ordererPort)
+	if err != nil {
+		return f, err
+	}
+	ordererAddr := net.JoinHostPort(host, orderer.Port())
 
 	dir, err := os.MkdirTemp("", "microfab-admin-")
 	if err != nil {
@@ -123,6 +135,10 @@ func start(ctx context.Context, hostPorts []int) (*Fab, error) {
 	}
 
 	f.conn, err = grpc.NewClient(f.peerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return f, err
+	}
+	f.orderer, err = grpc.NewClient(ordererAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return f, err
 	}
@@ -170,6 +186,7 @@ func (f *Fab) fetchAdmin(addr string) error {
 		if err != nil {
 			return err
 		}
+		f.signer = &configtx.SigningIdentity{Certificate: x509Cert, PrivateKey: priv, MSPID: c.MSPID}
 		f.admin, err = identity.NewPrivateKeySigningIdentity(c.MSPID, x509Cert, priv)
 		return err
 	}
@@ -208,16 +225,23 @@ func Pack(label, address string) (pkg []byte, pkgID string, err error) {
 	return pkg, pkgID, err
 }
 
+// Define installs pkg on the peer and defines it as name on Channel.
 func (f *Fab) Define(ctx context.Context, name string, pkg []byte, pkgID string) error {
 	if _, err := fabcc.NewPeer(f.conn, f.admin).Install(ctx, bytes.NewReader(pkg)); err != nil {
 		return fmt.Errorf("install: %w", err)
 	}
+	return f.define(ctx, Channel, name, pkgID)
+}
+
+// define approves and commits name@pkgID on channel, where pkg is installed.
+// A definition already committed there is success.
+func (f *Fab) define(ctx context.Context, channel, name, pkgID string) error {
 	gw := fabcc.NewGateway(f.conn, f.admin)
-	def := &fabcc.Definition{ChannelName: Channel, PackageID: pkgID, Name: name, Version: "1", Sequence: 1}
-	if err := gw.Approve(ctx, def); err != nil {
+	def := &fabcc.Definition{ChannelName: channel, PackageID: pkgID, Name: name, Version: "1", Sequence: 1}
+	if err := gw.Approve(ctx, def); err != nil && !already(err, "redefine the current committed sequence") {
 		return fmt.Errorf("approve: %w", err)
 	}
-	if err := gw.Commit(ctx, def); err != nil {
+	if err := gw.Commit(ctx, def); err != nil && !already(err, "new definition must be sequence 2") {
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
@@ -248,6 +272,9 @@ func (f *Fab) Close(ctx context.Context) {
 	_ = os.RemoveAll(f.adminDir)
 	if f.conn != nil {
 		_ = f.conn.Close()
+	}
+	if f.orderer != nil {
+		_ = f.orderer.Close()
 	}
 	if f.container != nil {
 		_ = f.container.Terminate(ctx)

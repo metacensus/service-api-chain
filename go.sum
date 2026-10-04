@@ -58,6 +58,8 @@ github.com/hyperledger/fabric-admin-sdk v0.2.1 h1:SR4kqCckTEEb00RGsUZ8ghWkjdWW1g
 github.com/hyperledger/fabric-admin-sdk v0.2.1/go.mod h1:3O8SicjiTfL9+paEy09R3BrXUhwY5eHQ99FbTKqh+m0=
 github.com/hyperledger/fabric-chaincode-go/v2 v2.3.0 h1:NB/QO2t4R5f6Nz/oREqZeaE4splHI2U9gqndfEQZreo=
 github.com/hyperledger/fabric-chaincode-go/v2 v2.3.0/go.mod h1:c3zA3gOL/V53a0v1TGgHe8nifeH6daG/UrmJs79I9pI=
+github.com/hyperledger/fabric-config v0.3.1 h1:5jq2Cx36ClfJZ1KhfOtNNhyyIPaSxHhw/Bg8f6Z258g=
+github.com/hyperledger/fabric-config v0.3.1/go.mod h1:jwJI+QPVaO1MBJiev8w+csJySnXNj07YfSHB4Jv0U6Y=
 github.com/hyperledger/fabric-gateway v1.12.1 h1:3cvteimMtoUi/nnO/TBk/Yl/bBNJf0D1RtewPtp0rfg=
 github.com/hyperledger/fabric-gateway v1.12.1/go.mod h1:WAtLb4qB6rfbTldHehTB50teTxESuiDr4j6LXA0+YlU=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7 h1:sQ5qv8vQQfwewa1JlCiSCC8dLElmaU2/frLolpgibEY=

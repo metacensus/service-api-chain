@@ -7,6 +7,8 @@ The store spans two deployables, built from this one module:
 - **the API** (`cmd/service`, `Dockerfile` target `service`), which reaches the peers through a Fabric gateway;
 - **the chaincode** (`cmd/chaincode`, target `chaincode`), chaincode-as-a-service the peers dial.
 
+Users and topics live on one channel; each topic's props and votes belong on a channel of their own, `metacensus.topic.<the topic id's uuid>`, which the API brings into being as the topic is created (`internal/channels`). Creating a Fabric channel is infra's Temporal orchestration in production, not yet built, so the API ships with every topic on the one channel; the integration suite runs a channel per topic on Microfab.
+
 Design decisions are in [AGENTS.md](AGENTS.md).
 
 ## Endpoints
@@ -24,7 +26,7 @@ The API:
 | `FABRIC_PEER_TLS_CA` | PEM CA for the peer's TLS. Required unless `FABRIC_PEER_PLAINTEXT=1`. |
 | `FABRIC_PEER_AUTHORITY` | Optional gRPC authority / TLS server name override. |
 | `FABRIC_MSP_ID`, `FABRIC_CERT`, `FABRIC_KEY` | The identity every transaction is submitted under: its MSP and PEM cert and key paths. |
-| `FABRIC_CHANNEL`, `FABRIC_CHAINCODE` | Where the store lives. |
+| `FABRIC_CHANNEL`, `FABRIC_CHAINCODE` | The channel users and topics live on, and the chaincode's name there and on every topic channel. |
 | `PORT` | Default `3001`. |
 
 The chaincode:
@@ -35,6 +37,7 @@ The chaincode:
 | `CHAINCODE_SERVER_ADDRESS` | `host:port` to listen on. |
 | `ALLOWED_ORIGINS` | Comma-separated WebAuthn origins a participant signature may name. |
 | `CHAINCODE_TLS_CERT`, `CHAINCODE_TLS_KEY`, `CHAINCODE_TLS_CLIENT_CA` | Server TLS, optionally mutual. Required unless `CHAINCODE_PLAINTEXT=1`. |
+| `GLOBAL_CHANNEL`, `GLOBAL_CHAINCODE` | The channel users and topics live on, and this chaincode's name there, which a topic channel reads keys and topics from. Set together, or neither when every channel is its own. |
 
 ## Tests
 

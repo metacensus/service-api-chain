@@ -16,16 +16,20 @@ import (
 	pb "github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"google.golang.org/grpc"
 
+	v1 "github.com/metacensus/api/go/metacensus/v1"
 	"github.com/metacensus/api/go/signing"
 	"github.com/metacensus/api/go/store"
 	"github.com/metacensus/api/go/store/storetest"
 
 	"github.com/metacensus/service-api-chain/internal/chaincode"
+	"github.com/metacensus/service-api-chain/internal/channels"
 	"github.com/metacensus/service-api-chain/internal/fabrictest"
 	"github.com/metacensus/service-api-chain/internal/gateway"
 )
 
-var sharedStore store.Store
+// perTopic is the store with a channel per topic, created on Microfab as
+// topics are; users and topics stay on fabrictest.Channel.
+var perTopic store.Store
 
 func TestMain(m *testing.M) {
 	os.Exit(run(m))
@@ -50,42 +54,80 @@ func run(m *testing.M) int {
 
 	srv := grpc.NewServer()
 	defer srv.Stop()
-	name, err := deployInProcess(ctx, f, srv, lis, port)
+	name, pkgID, err := deployInProcess(ctx, f, srv, lis, port)
 	if err != nil {
 		log.Printf("deploy: %v", err)
 		f.Close(ctx)
 		return 1
 	}
-	st, closeStore, err := gateway.Connect(f.Options(name))
+	st, closeStore, err := gateway.Connect(f.Options(name), channels.PerTopic(f.Provisioner(name, pkgID)))
 	if err != nil {
 		log.Printf("connect: %v", err)
 		f.Close(ctx)
 		return 1
 	}
 	defer func() { _ = closeStore() }()
-	sharedStore = st
+	perTopic = st
 
 	return f.Run(m)
 }
 
-func deployInProcess(ctx context.Context, f *fabrictest.Fab, srv *grpc.Server, lis net.Listener, port int) (string, error) {
-	name := fabrictest.Unique("inproc")
+// deployInProcess serves the chaincode from this process, told that users and
+// topics live on fabrictest.Channel under its own name, and installs and
+// defines it there; topic channels define the same package as they are made.
+func deployInProcess(ctx context.Context, f *fabrictest.Fab, srv *grpc.Server, lis net.Listener, port int) (name, pkgID string, err error) {
+	name = fabrictest.Unique("inproc")
 	pkg, pkgID, err := fabrictest.Pack(name, net.JoinHostPort(fabrictest.HostAlias, strconv.Itoa(port)))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	pb.RegisterChaincodeServer(srv, &shim.ChaincodeServer{
 		CCID: pkgID,
-		CC:   chaincode.New(signing.ParticipantPolicy(storetest.Origin)),
+		CC: chaincode.New(signing.ParticipantPolicy(storetest.Origin), chaincode.Config{
+			GlobalChannel:   fabrictest.Channel,
+			GlobalChaincode: name,
+		}),
 	})
 	go func() { _ = srv.Serve(lis) }()
-	return name, f.Define(ctx, name, pkg, pkgID)
+	return name, pkgID, f.Define(ctx, name, pkg, pkgID)
 }
 
+// Every topic the suite stores gets its own channel, about two dozen a run.
 func TestStore_Conformance(t *testing.T) {
 	storetest.Run(t, storetest.Harness{
-		Open:       func(t *testing.T) store.Store { return sharedStore },
+		Open:       func(t *testing.T) store.Store { return perTopic },
 		Signatures: storetest.Hard,
+	})
+}
+
+// A well-formed topic id with no channel behind it is answered as the op's
+// contract answers a topic that does not exist: the gateway's refusal to
+// invoke on a channel the peer has not joined is classified, not surfaced.
+func TestStore_NoSuchChannel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	topicID, propID := store.NewID(store.TopicID), store.NewID(store.PropID)
+
+	t.Run("error - GetProp is NotFound", func(t *testing.T) {
+		_, err := perTopic.GetProp(ctx, topicID, propID)
+		if store.KindOf(err) != store.NotFound {
+			t.Errorf("Kind = %q, want NotFound: %v", store.KindOf(err), err)
+		}
+	})
+	t.Run("error - ListProps is NotFound", func(t *testing.T) {
+		_, err := perTopic.ListProps(ctx, topicID)
+		if store.KindOf(err) != store.NotFound {
+			t.Errorf("Kind = %q, want NotFound: %v", store.KindOf(err), err)
+		}
+	})
+	t.Run("error - a vote is InvalidContent", func(t *testing.T) {
+		p := fabrictest.NewPerson(t)
+		content := &v1.Vote{TopicId: topicID, PropId: propID, UserId: "user:nobody", Position: v1.Vote_For}
+		interp, sig := p.Sign(t, storetest.Origin, content)
+		err := perTopic.SetVote(ctx, "user:nobody", &v1.VoteSigned{Content: content, Interpretation: interp, UserSignature: sig})
+		if store.KindOf(err) != store.InvalidContent {
+			t.Errorf("Kind = %q, want InvalidContent: %v", store.KindOf(err), err)
+		}
 	})
 }
 
@@ -104,7 +146,7 @@ func TestStore_Conflict(t *testing.T) {
 			<-start
 			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 			defer cancel()
-			errs[i] = sharedStore.EnrollUser(ctx, user, p.PublicKey, "opaque-hash")
+			errs[i] = perTopic.EnrollUser(ctx, user, p.PublicKey, "opaque-hash")
 		})
 	}
 	close(start)

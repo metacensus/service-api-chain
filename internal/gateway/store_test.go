@@ -107,7 +107,7 @@ func TestStore_Writes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeContract{}
-			if err := tt.call(newStore(f)); err != nil {
+			if err := tt.call(sharedStore(f)); err != nil {
 				t.Fatalf("err = %v", err)
 			}
 			assertCall(t, f, true, tt.method, tt.wantArgs(t))
@@ -115,13 +115,13 @@ func TestStore_Writes(t *testing.T) {
 
 		t.Run("error - "+tt.method+" classified from the chaincode", func(t *testing.T) {
 			f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.AlreadyExists))}
-			err := tt.call(newStore(f))
+			err := tt.call(sharedStore(f))
 			assertKind(t, err, store.AlreadyExists)
 		})
 
 		t.Run("error - "+tt.method+" unclassified", func(t *testing.T) {
 			f := &fakeContract{err: errBoom}
-			err := tt.call(newStore(f))
+			err := tt.call(sharedStore(f))
 			assertKind(t, err, "")
 			if !errors.Is(err, errBoom) {
 				t.Errorf("cause lost: %v", err)
@@ -148,7 +148,7 @@ func TestStore_Credential(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeContract{out: tt.out, err: tt.err}
-			id, hash, err := newStore(f).Credential(t.Context(), "a@b.c")
+			id, hash, err := sharedStore(f).Credential(t.Context(), "a@b.c")
 			assertCall(t, f, false, wire.Credential, [][]byte{[]byte("a@b.c")})
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
@@ -172,7 +172,7 @@ type getCase[R proto.Message] struct {
 func runGet[R proto.Message](t *testing.T, tt getCase[R]) {
 	t.Run("success - "+tt.name, func(t *testing.T) {
 		f := &fakeContract{out: mustRecord(t, tt.want)}
-		got, err := tt.call(newStore(f))
+		got, err := tt.call(sharedStore(f))
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
@@ -183,12 +183,12 @@ func runGet[R proto.Message](t *testing.T, tt getCase[R]) {
 	})
 	t.Run("error - "+tt.name+" not found", func(t *testing.T) {
 		f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.NotFound))}
-		_, err := tt.call(newStore(f))
+		_, err := tt.call(sharedStore(f))
 		assertKind(t, err, store.NotFound)
 	})
 	t.Run("error - "+tt.name+" undecodable result", func(t *testing.T) {
 		f := &fakeContract{out: []byte{0xff, 0xff}}
-		_, err := tt.call(newStore(f))
+		_, err := tt.call(sharedStore(f))
 		if err == nil {
 			t.Fatal("err = nil")
 		}
@@ -216,7 +216,7 @@ type listCase[R proto.Message] struct {
 func runList[R proto.Message](t *testing.T, tt listCase[R]) {
 	t.Run("success - "+tt.name, func(t *testing.T) {
 		f := &fakeContract{out: mustList(t, tt.want)}
-		got, err := tt.call(newStore(f))
+		got, err := tt.call(sharedStore(f))
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
@@ -226,17 +226,17 @@ func runList[R proto.Message](t *testing.T, tt listCase[R]) {
 		}
 	})
 	t.Run("success - "+tt.name+" empty", func(t *testing.T) {
-		got, err := tt.call(newStore(&fakeContract{}))
+		got, err := tt.call(sharedStore(&fakeContract{}))
 		if err != nil || len(got) != 0 {
 			t.Errorf("got (%v, %v), want empty", got, err)
 		}
 	})
 	t.Run("error - "+tt.name+" unavailable", func(t *testing.T) {
-		_, err := tt.call(newStore(&fakeContract{err: context.Canceled}))
+		_, err := tt.call(sharedStore(&fakeContract{err: context.Canceled}))
 		assertKind(t, err, store.Unavailable)
 	})
 	t.Run("error - "+tt.name+" malformed list", func(t *testing.T) {
-		_, err := tt.call(newStore(&fakeContract{out: []byte{0xff}}))
+		_, err := tt.call(sharedStore(&fakeContract{out: []byte{0xff}}))
 		if err == nil {
 			t.Fatal("err = nil")
 		}

@@ -8,6 +8,8 @@ import (
 	"github.com/metacensus/api/go/store/storetest"
 
 	"github.com/metacensus/service-api-chain/internal/chaincode"
+	"github.com/metacensus/service-api-chain/internal/fabrictest"
+	"github.com/metacensus/service-api-chain/internal/ledger"
 	"github.com/metacensus/service-api-chain/internal/ledger/memkv"
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
@@ -16,7 +18,7 @@ var policy = signing.ParticipantPolicy(storetest.Origin)
 
 func dispatch(fn string, args [][]byte) (out []byte, err error) {
 	err = memkv.New().Invoke(func(tx *memkv.Tx) (err error) {
-		out, err = chaincode.Dispatch(tx, policy, fn, args)
+		out, err = chaincode.Dispatch(tx, ledger.Local(tx), policy, fn, args)
 		return err
 	})
 	return out, err
@@ -51,4 +53,49 @@ func TestDispatchRejects(t *testing.T) {
 			}
 		})
 	}
+}
+
+// GetKey is the global channel's answer to a topic channel: the owner and key
+// a key_id was enrolled with, or NotFound.
+func TestDispatchGetKey(t *testing.T) {
+	state := memkv.New()
+	run := func(fn string, args [][]byte) (out []byte, err error) {
+		err = state.Invoke(func(tx *memkv.Tx) (err error) {
+			out, err = chaincode.Dispatch(tx, ledger.Local(tx), policy, fn, args)
+			return err
+		})
+		return out, err
+	}
+	ada := fabrictest.NewPerson(t)
+	user := ada.User(t, storetest.Origin, store.NewID(store.UserID), "ada@example.test")
+	enroll, err := wire.EncodeEnrollUser(user, ada.PublicKey, "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(wire.EnrollUser, enroll); err != nil {
+		t.Fatalf("enroll: %v", err)
+	}
+
+	t.Run("success - an enrolled key", func(t *testing.T) {
+		out, err := run(wire.GetKey, wire.EncodeStrings(ada.KeyID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		items, err := wire.DecodeList(out)
+		if err != nil || len(items) != 2 || string(items[0]) != user.GetId() || string(items[1]) != ada.PublicKey {
+			t.Fatalf("got (%q, %v), want [%s %s]", items, err, user.GetId(), ada.PublicKey)
+		}
+	})
+	t.Run("error - an unknown key is NotFound", func(t *testing.T) {
+		_, err := run(wire.GetKey, wire.EncodeStrings("nobody"))
+		if store.KindOf(err) != store.NotFound {
+			t.Fatalf("Kind = %q (err %v), want NotFound", store.KindOf(err), err)
+		}
+	})
+	t.Run("error - without its key id", func(t *testing.T) {
+		_, err := run(wire.GetKey, nil)
+		if store.KindOf(err) != store.InvalidContent {
+			t.Fatalf("Kind = %q (err %v), want InvalidContent", store.KindOf(err), err)
+		}
+	})
 }

@@ -230,7 +230,8 @@ func TestLedger_BackendFailures(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.call(ledger.New(tt.kv(t), policy))
+			kv := tt.kv(t)
+			err := tt.call(ledger.New(kv, ledger.Local(kv), policy))
 			if err == nil || store.KindOf(err) != "" {
 				t.Fatalf("want an error without a Kind, got %v (Kind %q)", err, store.KindOf(err))
 			}

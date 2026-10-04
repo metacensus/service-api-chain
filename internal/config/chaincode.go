@@ -14,6 +14,10 @@ type Chaincode struct {
 	// TLSClientCAFile, when set, makes the server verify the peer (mutual TLS).
 	TLSClientCAFile string
 	Plaintext       bool
+	// GlobalChannel and GlobalChaincode are where users and topics live and
+	// this chaincode's name there, for a topic channel's cross-channel reads;
+	// both empty is the one-channel deployment.
+	GlobalChannel, GlobalChaincode string
 }
 
 // LoadChaincode never infers plaintext; CHAINCODE_PLAINTEXT=1 must ask for it.
@@ -27,6 +31,11 @@ func LoadChaincode(getenv func(string) string) (Chaincode, error) {
 		TLSKeyFile:      r.optional("CHAINCODE_TLS_KEY"),
 		TLSClientCAFile: r.optional("CHAINCODE_TLS_CLIENT_CA"),
 		Plaintext:       r.optional("CHAINCODE_PLAINTEXT") == "1",
+		GlobalChannel:   r.optional("GLOBAL_CHANNEL"),
+		GlobalChaincode: r.optional("GLOBAL_CHAINCODE"),
+	}
+	if (c.GlobalChannel == "") != (c.GlobalChaincode == "") {
+		r.problemf("GLOBAL_CHANNEL and GLOBAL_CHAINCODE must be set together")
 	}
 
 	if raw := r.required("ALLOWED_ORIGINS"); raw != "" {

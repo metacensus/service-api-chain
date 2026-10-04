@@ -11,6 +11,7 @@ import (
 	v1 "github.com/metacensus/api/go/metacensus/v1"
 	"github.com/metacensus/api/go/store"
 
+	"github.com/metacensus/service-api-chain/internal/channels"
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
@@ -30,32 +31,58 @@ func (i contractInvoker) Evaluate(ctx context.Context, name string, args [][]byt
 	return i.c.EvaluateWithContext(ctx, name, client.WithBytesArguments(args...))
 }
 
-func newStore(c invoker) store.Store { return &chainStore{c: c} }
+// newStore routes users and topics to the global channel and each topic's
+// props and votes to the channel topics resolves, invoking the chaincode
+// through contract(channel).
+func newStore(contract func(channel string) invoker, global string, topics channels.Channels) store.Store {
+	return &chainStore{contract: contract, global: global, topics: topics}
+}
 
-type chainStore struct{ c invoker }
+type chainStore struct {
+	contract func(channel string) invoker
+	global   string
+	topics   channels.Channels
+}
 
 func (s *chainStore) EnrollUser(ctx context.Context, record *v1.UserSigned, publicKey, passwordHash string) error {
 	args, err := wire.EncodeEnrollUser(record, publicKey, passwordHash)
 	if err != nil {
 		return failure(wire.EnrollUser, err)
 	}
-	return s.submit(ctx, wire.EnrollUser, args)
+	return s.submit(ctx, s.onGlobal(), wire.EnrollUser, args)
 }
 
+// CreateTopic is the one store method that is not one chaincode invocation:
+// the topic's channel is brought into being first, so a listed topic can take
+// a prop (storetest expects CreateProp to succeed right after), then the
+// record is written on the global channel. A refused record leaves a channel
+// with no topic; nothing here cleans that up, and infra's orchestration will
+// own the whole sequence in production.
 func (s *chainStore) CreateTopic(ctx context.Context, callerID string, record *v1.TopicSigned) error {
-	return s.write(ctx, wire.CreateTopic, callerID, record)
+	if err := s.topics.Provision(ctx, record.GetId()); err != nil {
+		return failure(wire.CreateTopic, err)
+	}
+	return s.write(ctx, s.onGlobal(), wire.CreateTopic, callerID, record)
 }
 
 func (s *chainStore) CreateProp(ctx context.Context, callerID string, record *v1.PropSigned) error {
-	return s.write(ctx, wire.CreateProp, callerID, record)
+	to, err := s.topic(wire.CreateProp, record.GetContent().GetTopicId(), store.InvalidContent)
+	if err != nil {
+		return err
+	}
+	return s.write(ctx, to, wire.CreateProp, callerID, record)
 }
 
 func (s *chainStore) SetVote(ctx context.Context, callerID string, record *v1.VoteSigned) error {
-	return s.write(ctx, wire.SetVote, callerID, record)
+	to, err := s.topic(wire.SetVote, record.GetContent().GetTopicId(), store.InvalidContent)
+	if err != nil {
+		return err
+	}
+	return s.write(ctx, to, wire.SetVote, callerID, record)
 }
 
 func (s *chainStore) Credential(ctx context.Context, email string) (id, passwordHash string, err error) {
-	out, err := s.evaluate(ctx, wire.Credential, email)
+	out, err := s.evaluate(ctx, s.onGlobal(), wire.Credential, email)
 	if err != nil {
 		return "", "", err
 	}
@@ -70,59 +97,97 @@ func (s *chainStore) Credential(ctx context.Context, email string) (id, password
 }
 
 func (s *chainStore) GetUser(ctx context.Context, id string) (*v1.UserSigned, error) {
-	return getRecord[*v1.UserSigned](ctx, s, wire.GetUser, id)
+	return getRecord[*v1.UserSigned](ctx, s, s.onGlobal(), wire.GetUser, id)
 }
 
 func (s *chainStore) GetTopic(ctx context.Context, id string) (*v1.TopicSigned, error) {
-	return getRecord[*v1.TopicSigned](ctx, s, wire.GetTopic, id)
+	return getRecord[*v1.TopicSigned](ctx, s, s.onGlobal(), wire.GetTopic, id)
 }
 
 func (s *chainStore) GetProp(ctx context.Context, topicID, propID string) (*v1.PropSigned, error) {
-	return getRecord[*v1.PropSigned](ctx, s, wire.GetProp, topicID, propID)
+	to, err := s.topic(wire.GetProp, topicID, store.NotFound)
+	if err != nil {
+		return nil, err
+	}
+	return getRecord[*v1.PropSigned](ctx, s, to, wire.GetProp, topicID, propID)
 }
 
 func (s *chainStore) ListUsers(ctx context.Context) ([]*v1.UserSigned, error) {
-	return listRecords[*v1.UserSigned](ctx, s, wire.ListUsers)
+	return listRecords[*v1.UserSigned](ctx, s, s.onGlobal(), wire.ListUsers)
 }
 
 func (s *chainStore) ListTopics(ctx context.Context) ([]*v1.TopicSigned, error) {
-	return listRecords[*v1.TopicSigned](ctx, s, wire.ListTopics)
+	return listRecords[*v1.TopicSigned](ctx, s, s.onGlobal(), wire.ListTopics)
 }
 
 func (s *chainStore) ListProps(ctx context.Context, topicID string) ([]*v1.PropSigned, error) {
-	return listRecords[*v1.PropSigned](ctx, s, wire.ListProps, topicID)
+	to, err := s.topic(wire.ListProps, topicID, store.NotFound)
+	if err != nil {
+		return nil, err
+	}
+	return listRecords[*v1.PropSigned](ctx, s, to, wire.ListProps, topicID)
 }
 
 func (s *chainStore) ListVotes(ctx context.Context, topicID, propID string) ([]*v1.VoteSigned, error) {
-	return listRecords[*v1.VoteSigned](ctx, s, wire.ListVotes, topicID, propID)
+	to, err := s.topic(wire.ListVotes, topicID, store.NotFound)
+	if err != nil {
+		return nil, err
+	}
+	return listRecords[*v1.VoteSigned](ctx, s, to, wire.ListVotes, topicID, propID)
 }
 
-func (s *chainStore) write(ctx context.Context, op, callerID string, record proto.Message) error {
+// target is the channel an invocation goes to. missing is the Kind the op's
+// contract gives a topic that does not exist, which is how a topic channel
+// that does not exist is answered, whether the id resolves to none or the
+// network has none; it is "" for the global channel, which always exists.
+type target struct {
+	channel string
+	missing store.Kind
+}
+
+func (s *chainStore) onGlobal() target { return target{channel: s.global} }
+
+func (s *chainStore) topic(op, topicID string, missing store.Kind) (target, error) {
+	channel, err := s.topics.Resolve(topicID)
+	if err != nil {
+		return target{}, store.Errf(missing, op, err)
+	}
+	return target{channel: channel, missing: missing}, nil
+}
+
+func (s *chainStore) write(ctx context.Context, to target, op, callerID string, record proto.Message) error {
 	args, err := wire.EncodeWrite(callerID, record)
 	if err != nil {
 		return failure(op, err)
 	}
-	return s.submit(ctx, op, args)
+	return s.submit(ctx, to, op, args)
 }
 
-func (s *chainStore) submit(ctx context.Context, op string, args [][]byte) error {
-	if _, err := s.c.Submit(ctx, op, args); err != nil {
-		return failure(op, err)
+func (s *chainStore) submit(ctx context.Context, to target, op string, args [][]byte) error {
+	if _, err := s.contract(to.channel).Submit(ctx, op, args); err != nil {
+		return to.failure(op, err)
 	}
 	return nil
 }
 
-func (s *chainStore) evaluate(ctx context.Context, op string, args ...string) ([]byte, error) {
-	out, err := s.c.Evaluate(ctx, op, wire.EncodeStrings(args...))
+func (s *chainStore) evaluate(ctx context.Context, to target, op string, args ...string) ([]byte, error) {
+	out, err := s.contract(to.channel).Evaluate(ctx, op, wire.EncodeStrings(args...))
 	if err != nil {
-		return nil, failure(op, err)
+		return nil, to.failure(op, err)
 	}
 	return out, nil
 }
 
-func getRecord[R proto.Message](ctx context.Context, s *chainStore, op string, args ...string) (R, error) {
+func (to target) failure(op string, err error) error {
+	if to.missing != "" && missingChannel(err) {
+		return store.Errf(to.missing, op, err)
+	}
+	return failure(op, err)
+}
+
+func getRecord[R proto.Message](ctx context.Context, s *chainStore, to target, op string, args ...string) (R, error) {
 	var zero R
-	out, err := s.evaluate(ctx, op, args...)
+	out, err := s.evaluate(ctx, to, op, args...)
 	if err != nil {
 		return zero, err
 	}
@@ -133,8 +198,8 @@ func getRecord[R proto.Message](ctx context.Context, s *chainStore, op string, a
 	return rec, nil
 }
 
-func listRecords[R proto.Message](ctx context.Context, s *chainStore, op string, args ...string) ([]R, error) {
-	out, err := s.evaluate(ctx, op, args...)
+func listRecords[R proto.Message](ctx context.Context, s *chainStore, to target, op string, args ...string) ([]R, error) {
+	out, err := s.evaluate(ctx, to, op, args...)
 	if err != nil {
 		return nil, err
 	}
