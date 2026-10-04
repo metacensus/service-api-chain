@@ -8,8 +8,7 @@ type Service struct {
 }
 
 // Fabric is how the API reaches its store: the peer to dial, the identity to
-// submit as, and the chaincode to invoke. It lives here, not in gateway, so
-// that reading the chaincode's configuration does not link the gateway client.
+// submit as, and the chaincode to invoke.
 type Fabric struct {
 	// PeerEndpoint is the peer gateway's gRPC address, host:port.
 	PeerEndpoint string
