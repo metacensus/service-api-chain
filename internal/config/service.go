@@ -1,14 +1,32 @@
 package config
 
-import (
-	"github.com/metacensus/service-api-chain/internal/gateway"
-)
-
 const defaultPort = 3001
 
 type Service struct {
 	Port   int
-	Fabric gateway.Options
+	Fabric Fabric
+}
+
+// Fabric is how the API reaches its store: the peer to dial, the identity to
+// submit as, and the chaincode to invoke. It lives here, not in gateway, so
+// that reading the chaincode's configuration does not link the gateway client.
+type Fabric struct {
+	// PeerEndpoint is the peer gateway's gRPC address, host:port.
+	PeerEndpoint string
+
+	// PeerTLSCAFile is the path to the PEM CA that signed the peer's TLS certificate.
+	// Empty dials plaintext.
+	PeerTLSCAFile string
+
+	// PeerAuthority, if set, replaces PeerEndpoint's host as gRPC authority and TLS server name.
+	PeerAuthority string
+
+	MSPID    string
+	CertFile string
+	KeyFile  string
+
+	Channel   string
+	Chaincode string
 }
 
 // LoadService never infers plaintext from the peer's address; FABRIC_PEER_PLAINTEXT=1 must ask for it.
@@ -28,7 +46,7 @@ func LoadService(getenv func(string) string) (Service, error) {
 		r.problemf("FABRIC_PEER_TLS_CA and FABRIC_PEER_PLAINTEXT=1 contradict each other")
 	}
 
-	s.Fabric = gateway.Options{
+	s.Fabric = Fabric{
 		PeerEndpoint:  endpoint,
 		PeerTLSCAFile: ca,
 		PeerAuthority: r.optional("FABRIC_PEER_AUTHORITY"),

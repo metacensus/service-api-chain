@@ -14,11 +14,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/metacensus/api/go/store"
+
+	"github.com/metacensus/service-api-chain/internal/config"
 )
 
 // Connect dials the peer named by o and returns the store over its chaincode,
 // and a close func that releases the gateway and then the connection.
-func Connect(o Options) (store.Store, func() error, error) {
+func Connect(o config.Fabric) (store.Store, func() error, error) {
 	id, sign, err := loadIdentity(o)
 	if err != nil {
 		return nil, nil, err
@@ -43,7 +45,7 @@ func Connect(o Options) (store.Store, func() error, error) {
 	return newStore(contractInvoker{gw.GetNetwork(o.Channel).GetContract(o.Chaincode)}), closeAll, nil
 }
 
-func loadIdentity(o Options) (*identity.X509Identity, identity.Sign, error) {
+func loadIdentity(o config.Fabric) (*identity.X509Identity, identity.Sign, error) {
 	certPEM, err := os.ReadFile(o.CertFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gateway: read cert: %w", err)
@@ -72,7 +74,7 @@ func loadIdentity(o Options) (*identity.X509Identity, identity.Sign, error) {
 	return id, sign, nil
 }
 
-func dial(o Options) (*grpc.ClientConn, error) {
+func dial(o config.Fabric) (*grpc.ClientConn, error) {
 	creds := insecure.NewCredentials()
 	if o.PeerTLSCAFile != "" {
 		caPEM, err := os.ReadFile(o.PeerTLSCAFile)

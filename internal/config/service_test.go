@@ -1,10 +1,6 @@
 package config
 
-import (
-	"testing"
-
-	"github.com/metacensus/service-api-chain/internal/gateway"
-)
+import "testing"
 
 var serviceBase = map[string]string{
 	"FABRIC_PEER_ENDPOINT": "peer.example:7051",
@@ -25,7 +21,7 @@ func TestLoadService(t *testing.T) {
 	}{
 		{
 			name: "success - defaults the port",
-			want: Service{Port: defaultPort, Fabric: gateway.Options{
+			want: Service{Port: defaultPort, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051", PeerTLSCAFile: "/certs/ca.pem",
 				MSPID: "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
 				Channel: "metacensus", Chaincode: "store",
@@ -34,7 +30,7 @@ func TestLoadService(t *testing.T) {
 		{
 			name:     "success - explicit port, authority and trimmed values",
 			override: map[string]string{"PORT": "8080", "FABRIC_PEER_AUTHORITY": "peer0.org1", "FABRIC_CHANNEL": " metacensus "},
-			want: Service{Port: 8080, Fabric: gateway.Options{
+			want: Service{Port: 8080, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051", PeerTLSCAFile: "/certs/ca.pem", PeerAuthority: "peer0.org1",
 				MSPID: "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
 				Channel: "metacensus", Chaincode: "store",
@@ -43,7 +39,7 @@ func TestLoadService(t *testing.T) {
 		{
 			name:     "success - plaintext only when asked for",
 			override: map[string]string{"FABRIC_PEER_TLS_CA": "", "FABRIC_PEER_PLAINTEXT": "1"},
-			want: Service{Port: defaultPort, Fabric: gateway.Options{
+			want: Service{Port: defaultPort, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051",
 				MSPID:        "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
 				Channel: "metacensus", Chaincode: "store",
