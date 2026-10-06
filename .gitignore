@@ -1,2 +1,5 @@
 # Build output.
 /bin/
+
+# Per-developer Claude Code settings.
+.claude/settings.local.json
