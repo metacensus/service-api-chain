@@ -1,10 +1,6 @@
 package config
 
-import (
-	"testing"
-
-	"github.com/metacensus/service-api-chain/internal/chaincode"
-)
+import "testing"
 
 var chaincodeBase = map[string]string{
 	"CHAINCODE_ID":             "store:abc",
@@ -86,7 +82,7 @@ func TestLoadChaincode(t *testing.T) {
 			name:     "success - the global channel and the chaincode's name there",
 			override: map[string]string{"GLOBAL_CHANNEL": "metacensus", "GLOBAL_CHAINCODE": "store"},
 			want: Chaincode{ID: "store:abc", Address: ":9999", AllowedOrigins: []string{"https://metacensus.example"},
-				TLSCertFile: "/tls/cert.pem", TLSKeyFile: "/tls/key.pem", Global: chaincode.Config{GlobalChannel: "metacensus", GlobalChaincode: "store"}},
+				TLSCertFile: "/tls/cert.pem", TLSKeyFile: "/tls/key.pem", Global: Global{Channel: "metacensus", Chaincode: "store"}},
 		},
 		{
 			name:     "error - the global channel without the chaincode's name",

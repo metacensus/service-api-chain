@@ -23,12 +23,11 @@ import (
 
 	"github.com/metacensus/service-api-chain/internal/chaincode"
 	"github.com/metacensus/service-api-chain/internal/channels"
+	"github.com/metacensus/service-api-chain/internal/config"
 	"github.com/metacensus/service-api-chain/internal/fabrictest"
 	"github.com/metacensus/service-api-chain/internal/gateway"
 )
 
-// perTopic is the store with a channel per topic, created on Microfab as
-// topics are; users and topics stay on fabrictest.Channel.
 var perTopic store.Store
 
 func TestMain(m *testing.M) {
@@ -83,16 +82,12 @@ func deployInProcess(ctx context.Context, f *fabrictest.Fab, srv *grpc.Server, l
 	}
 	pb.RegisterChaincodeServer(srv, &shim.ChaincodeServer{
 		CCID: pkgID,
-		CC: chaincode.New(signing.ParticipantPolicy(storetest.Origin), chaincode.Config{
-			GlobalChannel:   fabrictest.Channel,
-			GlobalChaincode: name,
-		}),
+		CC:   chaincode.New(signing.ParticipantPolicy(storetest.Origin), config.Global{Channel: fabrictest.Channel, Chaincode: name}),
 	})
 	go func() { _ = srv.Serve(lis) }()
 	return name, pkgID, f.Define(ctx, name, pkg, pkgID)
 }
 
-// Every topic the suite stores gets its own channel, about two dozen a run.
 func TestStore_Conformance(t *testing.T) {
 	storetest.Run(t, storetest.Harness{
 		Open:       func(t *testing.T) store.Store { return perTopic },
@@ -100,9 +95,6 @@ func TestStore_Conformance(t *testing.T) {
 	})
 }
 
-// A well-formed topic id with no channel behind it is answered as the op's
-// contract answers a topic that does not exist: the gateway's refusal to
-// invoke on a channel the peer has not joined is classified, not surfaced.
 func TestStore_NoSuchChannel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()

@@ -9,6 +9,7 @@ import (
 
 	"github.com/metacensus/api/go/store"
 
+	"github.com/metacensus/service-api-chain/internal/config"
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
@@ -42,14 +43,14 @@ func (query Remote) HasTopic(topicID string) (bool, error) {
 	return err == nil, err
 }
 
-func invokeOnGlobal(stub shim.ChaincodeStubInterface, cfg Config) Remote {
+func invokeOnGlobal(stub shim.ChaincodeStubInterface, cfg config.Global) Remote {
 	return func(fn string, args ...string) ([]byte, error) {
 		invocation := append([][]byte{[]byte(fn)}, wire.EncodeStrings(args...)...)
-		resp := stub.InvokeChaincode(cfg.GlobalChaincode, invocation, cfg.GlobalChannel)
+		resp := stub.InvokeChaincode(cfg.Chaincode, invocation, cfg.Channel)
 		if resp.GetStatus() == http.StatusOK {
 			return resp.GetPayload(), nil
 		}
-		cause := fmt.Errorf("%s on %s: %s", fn, cfg.GlobalChannel, resp.GetMessage())
+		cause := fmt.Errorf("%s on %s: %s", fn, cfg.Channel, resp.GetMessage())
 		if kind := wire.ParseKind(resp.GetMessage()); kind != "" {
 			return nil, store.Errf(kind, fn, cause)
 		}

@@ -81,7 +81,6 @@ func (n *network) invoke(channel, name string, args [][]byte) (out []byte, err e
 	return out, nil
 }
 
-// globalFor is the users-and-topics state as channel reads it.
 func (n *network) globalFor(channel string, tx *memkv.Tx) ledger.Global {
 	if channel != n.global {
 		return chaincode.Remote(n.query)
@@ -89,8 +88,6 @@ func (n *network) globalFor(channel string, tx *memkv.Tx) ledger.Global {
 	return ledger.Local(tx)
 }
 
-// query is a topic channel's read of the global channel: a transaction there
-// that is never committed.
 func (n *network) query(fn string, args ...string) ([]byte, error) {
 	tx := n.state(n.global).Begin()
 	return chaincode.Dispatch(tx, ledger.Local(tx), policy, fn, wire.EncodeStrings(args...))

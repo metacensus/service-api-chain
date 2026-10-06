@@ -55,8 +55,6 @@ func TestDispatchRejects(t *testing.T) {
 	}
 }
 
-// GetKey is the global channel's answer to a topic channel: the owner and key
-// a key_id was enrolled with, or NotFound.
 func TestDispatchGetKey(t *testing.T) {
 	state := memkv.New()
 	run := func(fn string, args [][]byte) (out []byte, err error) {

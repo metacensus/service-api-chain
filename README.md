@@ -7,7 +7,7 @@ The store spans two deployables, built from this one module:
 - **the API** (`cmd/service`, `Dockerfile` target `service`), which reaches the peers through a Fabric gateway;
 - **the chaincode** (`cmd/chaincode`, target `chaincode`), chaincode-as-a-service the peers dial.
 
-Users and topics live on one channel; each topic's props and votes belong on a channel of their own, `metacensus.topic.<the topic id's uuid>`, which the API brings into being as the topic is created (`internal/channels`). Creating a Fabric channel is infra's Temporal orchestration in production, not yet built, so the API ships with every topic on the one channel; the integration suite runs a channel per topic on Microfab.
+Users and topics live on `FABRIC_CHANNEL`. Each topic's props and votes are meant for a channel of their own (`internal/channels`); until infra's Temporal workflows create channels, the API keeps every topic on that one channel.
 
 Design decisions are in [AGENTS.md](AGENTS.md).
 

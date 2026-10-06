@@ -3,8 +3,6 @@ package config
 import (
 	"net/url"
 	"strings"
-
-	"github.com/metacensus/service-api-chain/internal/chaincode"
 )
 
 type Chaincode struct {
@@ -16,8 +14,12 @@ type Chaincode struct {
 	// TLSClientCAFile, when set, makes the server verify the peer (mutual TLS).
 	TLSClientCAFile string
 	Plaintext       bool
-	Global          chaincode.Config
+	Global          Global
 }
+
+// Global names the channel holding users and topics and the chaincode's name
+// there; an empty Channel makes every channel its own global.
+type Global struct{ Channel, Chaincode string }
 
 // LoadChaincode never infers plaintext; CHAINCODE_PLAINTEXT=1 must ask for it.
 func LoadChaincode(getenv func(string) string) (Chaincode, error) {
@@ -30,12 +32,12 @@ func LoadChaincode(getenv func(string) string) (Chaincode, error) {
 		TLSKeyFile:      r.optional("CHAINCODE_TLS_KEY"),
 		TLSClientCAFile: r.optional("CHAINCODE_TLS_CLIENT_CA"),
 		Plaintext:       r.optional("CHAINCODE_PLAINTEXT") == "1",
-		Global: chaincode.Config{
-			GlobalChannel:   r.optional("GLOBAL_CHANNEL"),
-			GlobalChaincode: r.optional("GLOBAL_CHAINCODE"),
+		Global: Global{
+			Channel:   r.optional("GLOBAL_CHANNEL"),
+			Chaincode: r.optional("GLOBAL_CHAINCODE"),
 		},
 	}
-	if (c.Global.GlobalChannel == "") != (c.Global.GlobalChaincode == "") {
+	if (c.Global.Channel == "") != (c.Global.Chaincode == "") {
 		r.problemf("GLOBAL_CHANNEL and GLOBAL_CHAINCODE must be set together")
 	}
 
