@@ -43,3 +43,7 @@ The chaincode:
 ## Releasing
 
 `make release-patch` / `-minor` / `-major` tag and push; the tag publishes `docker.io/metacensus/service-api-chain` and `service-api-chain-chaincode`. Publishing needs the `DOCKERHUB_TOKEN` secret, an organization token with write access to both.
+
+## License
+
+AGPL-3.0-only ([LICENSE](LICENSE)).
