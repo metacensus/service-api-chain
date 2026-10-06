@@ -22,10 +22,8 @@ import (
 
 var policy = signing.ParticipantPolicy(storetest.Origin)
 
-// network is Fabric in process: a world state per channel, the chaincode
-// dispatched over it with a topic channel's cross-channel reads answered by
-// the global one, and a failure surfaced as a peer would surface it, the
-// chaincode's message in an endorsement detail. A channel exists once created.
+// network is Fabric in process: a memkv per created channel, failures surfaced
+// as a peer surfaces them.
 type network struct {
 	mu     sync.Mutex
 	states map[string]*memkv.Store

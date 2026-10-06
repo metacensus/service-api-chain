@@ -61,7 +61,6 @@ type Global interface {
 	HasTopic(topicID string) (bool, error)
 }
 
-// Local reads Global from kv, for the channel that holds users and topics.
 func Local(kv KV) Global { return local{kv} }
 
 type local struct{ kv KV }
@@ -97,8 +96,6 @@ type ledger struct {
 	policy signing.Policy
 }
 
-// New is the store over kv, with global answering for the users-and-topics
-// channel: Local(kv) when kv is that channel.
 func New(kv KV, global Global, policy signing.Policy) store.Store {
 	return &ledger{kv: kv, global: global, policy: policy}
 }

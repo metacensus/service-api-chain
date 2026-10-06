@@ -115,16 +115,16 @@ func (s *chainStore) ListVotes(ctx context.Context, topicID, propID string) ([]*
 // NotFound for a read. Under channels.Shared a topic's channel is the global
 // one, whose refusal stays what it is.
 type target struct {
-	channel  string
-	resolved error
-	onTopic  bool
+	channel    string
+	unresolved error
+	onTopic    bool
 }
 
 func (s *chainStore) onGlobal() target { return target{channel: s.global} }
 
 func (s *chainStore) topic(topicID string) target {
 	channel, err := s.topics.Resolve(topicID)
-	return target{channel: channel, resolved: err, onTopic: channel != s.global}
+	return target{channel: channel, unresolved: err, onTopic: channel != s.global}
 }
 
 func (s *chainStore) write(ctx context.Context, to target, op, callerID string, record proto.Message) error {
@@ -136,8 +136,8 @@ func (s *chainStore) write(ctx context.Context, to target, op, callerID string, 
 }
 
 func (s *chainStore) submit(ctx context.Context, to target, op string, args [][]byte) error {
-	if to.resolved != nil {
-		return store.Errf(store.InvalidContent, op, to.resolved)
+	if to.unresolved != nil {
+		return store.Errf(store.InvalidContent, op, to.unresolved)
 	}
 	if _, err := s.contract(to.channel).Submit(ctx, op, args); err != nil {
 		return to.failure(store.InvalidContent, op, err)
@@ -146,8 +146,8 @@ func (s *chainStore) submit(ctx context.Context, to target, op string, args [][]
 }
 
 func (s *chainStore) evaluate(ctx context.Context, to target, op string, args ...string) ([]byte, error) {
-	if to.resolved != nil {
-		return nil, store.Errf(store.NotFound, op, to.resolved)
+	if to.unresolved != nil {
+		return nil, store.Errf(store.NotFound, op, to.unresolved)
 	}
 	out, err := s.contract(to.channel).Evaluate(ctx, op, wire.EncodeStrings(args...))
 	if err != nil {

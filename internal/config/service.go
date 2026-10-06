@@ -24,10 +24,7 @@ type Fabric struct {
 	CertFile string
 	KeyFile  string
 
-	// Channel holds users and topics; Chaincode is the store's chaincode as
-	// defined there and on every topic channel.
-	Channel   string
-	Chaincode string
+	Global
 }
 
 // LoadService never infers plaintext from the peer's address; FABRIC_PEER_PLAINTEXT=1 must ask for it.
@@ -54,8 +51,7 @@ func LoadService(getenv func(string) string) (Service, error) {
 		MSPID:         r.required("FABRIC_MSP_ID"),
 		CertFile:      r.required("FABRIC_CERT"),
 		KeyFile:       r.required("FABRIC_KEY"),
-		Channel:       r.required("FABRIC_CHANNEL"),
-		Chaincode:     r.required("FABRIC_CHAINCODE"),
+		Global:        Global{Channel: r.required("FABRIC_CHANNEL"), Chaincode: r.required("FABRIC_CHAINCODE")},
 	}
 
 	if err := r.err(); err != nil {

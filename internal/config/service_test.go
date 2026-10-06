@@ -24,7 +24,7 @@ func TestLoadService(t *testing.T) {
 			want: Service{Port: defaultPort, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051", PeerTLSCAFile: "/certs/ca.pem",
 				MSPID: "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
-				Channel: "metacensus", Chaincode: "store",
+				Global: Global{Channel: "metacensus", Chaincode: "store"},
 			}},
 		},
 		{
@@ -33,7 +33,7 @@ func TestLoadService(t *testing.T) {
 			want: Service{Port: 8080, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051", PeerTLSCAFile: "/certs/ca.pem", PeerAuthority: "peer0.org1",
 				MSPID: "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
-				Channel: "metacensus", Chaincode: "store",
+				Global: Global{Channel: "metacensus", Chaincode: "store"},
 			}},
 		},
 		{
@@ -42,7 +42,7 @@ func TestLoadService(t *testing.T) {
 			want: Service{Port: defaultPort, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051",
 				MSPID:        "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
-				Channel: "metacensus", Chaincode: "store",
+				Global: Global{Channel: "metacensus", Chaincode: "store"},
 			}},
 		},
 		{

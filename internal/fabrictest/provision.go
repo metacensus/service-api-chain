@@ -12,19 +12,19 @@ import (
 	"github.com/hyperledger/fabric-config/configtx"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+
+	"github.com/metacensus/service-api-chain/internal/channels"
 )
 
-// Microfab's orderer runs a system channel ("testchainid", solo consensus),
-// so a channel is created the classic way, not by the participation API infra
-// targets: a signed channel-creation update broadcast to the orderer, which
-// fills the orderer and consortium groups from the system channel. consortium is the one its genesis block names, and Org1's
-// group in it is keyed by MSP ID.
+// Microfab's orderer runs a system channel, so a channel is created the
+// classic way, not by the participation API infra targets: a signed creation
+// update broadcast to the orderer. consortium is the one its genesis block
+// names; Org1's group in it is keyed by MSP ID.
 const consortium = "SampleConsortium"
 
-// Provisioner is channels.PerTopic's create: it creates the channel, joins the
-// peer, and defines name@pkgID (installed by Define) there; work already done
-// is success.
-func (f *Fab) Provisioner(name, pkgID string) func(ctx context.Context, channel string) error {
+// Provisioner creates each topic's channel, joins the peer, and defines
+// name@pkgID (installed by Define) there.
+func (f *Fab) Provisioner(name, pkgID string) channels.PerTopic {
 	return func(ctx context.Context, ch string) error {
 		if err := f.createChannel(ctx, ch); err != nil && !already(err, "existing channel") {
 			return fmt.Errorf("create %s: %w", ch, err)

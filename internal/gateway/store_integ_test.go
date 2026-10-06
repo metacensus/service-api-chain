@@ -22,7 +22,6 @@ import (
 	"github.com/metacensus/api/go/store/storetest"
 
 	"github.com/metacensus/service-api-chain/internal/chaincode"
-	"github.com/metacensus/service-api-chain/internal/channels"
 	"github.com/metacensus/service-api-chain/internal/config"
 	"github.com/metacensus/service-api-chain/internal/fabrictest"
 	"github.com/metacensus/service-api-chain/internal/gateway"
@@ -59,7 +58,7 @@ func run(m *testing.M) int {
 		f.Close(ctx)
 		return 1
 	}
-	st, closeStore, err := gateway.Connect(f.Options(name), channels.PerTopic(f.Provisioner(name, pkgID)))
+	st, closeStore, err := gateway.Connect(f.Options(name), f.Provisioner(name, pkgID))
 	if err != nil {
 		log.Printf("connect: %v", err)
 		f.Close(ctx)
@@ -71,9 +70,8 @@ func run(m *testing.M) int {
 	return f.Run(m)
 }
 
-// deployInProcess serves the chaincode from this process, told that users and
-// topics live on fabrictest.Channel under its own name, and installs and
-// defines it there; topic channels define the same package as they are made.
+// deployInProcess serves the chaincode from this process and defines it on
+// fabrictest.Channel; the returned pkgID is what topic channels define.
 func deployInProcess(ctx context.Context, f *fabrictest.Fab, srv *grpc.Server, lis net.Listener, port int) (name, pkgID string, err error) {
 	name = fabrictest.Unique("inproc")
 	pkg, pkgID, err := fabrictest.Pack(name, net.JoinHostPort(fabrictest.HostAlias, strconv.Itoa(port)))

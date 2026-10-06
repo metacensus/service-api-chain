@@ -200,8 +200,7 @@ func (f *Fab) Options(chaincodeName string) config.Fabric {
 		MSPID:        MSPID,
 		CertFile:     f.CertFile,
 		KeyFile:      f.KeyFile,
-		Channel:      Channel,
-		Chaincode:    chaincodeName,
+		Global:       config.Global{Channel: Channel, Chaincode: chaincodeName},
 	}
 }
 
