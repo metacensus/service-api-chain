@@ -1,7 +1,4 @@
-// Package channels places a topic's props and votes on a Fabric channel and
-// brings that channel into being. It is the seam between the gateway, which
-// routes every store call through it, and whatever runs the network: Microfab
-// in the test suites, infra's Temporal workflows in production.
+// Package channels names each topic's Fabric channel and brings it into being.
 package channels
 
 import (
@@ -11,56 +8,41 @@ import (
 )
 
 type Channels interface {
-	// Resolve names the channel holding topicID's props and votes. It is
-	// static, no lookup, so it fails only on an id that is not a topic id
-	// (InvalidContent).
+	// Resolve names topicID's channel without a lookup, failing
+	// (InvalidContent) only on an id that is not a topic id.
 	Resolve(topicID string) (string, error)
 
-	// Provision brings Resolve(topicID) into being: created on the orderer,
-	// joined by the peers, the chaincode defined on it. It is not a chaincode
-	// transaction and may fail partway; a re-run with the same topicID must
-	// finish the job, so an existing channel, join or definition is success.
-	// It returns once the chaincode answers on the channel.
+	// Provision brings Resolve(topicID) into being — the channel, the peers'
+	// join, the chaincode's definition — and returns once the chaincode
+	// answers there. A re-run must finish a partial one, so work already done
+	// is success.
 	Provision(ctx context.Context, topicID string) error
 }
 
-// Shared is every topic on the one named channel: the backend's first shape,
-// and the production default until a provisioner runs there.
+// Shared puts every topic on the one named channel, which already exists.
 type Shared string
 
 func (s Shared) Resolve(string) (string, error)        { return string(s), nil }
 func (Shared) Provision(context.Context, string) error { return nil }
 
-// Prefix opens every per-topic channel name; the rest is the topic id's UUID,
-// infra's convention (core/chaincode/contracts/topic.go). Channel names allow
-// only lowercase letters, digits, '.' and '-', which a canonical UUID is.
-const Prefix = "metacensus.topic."
+// PerTopic is a channel per topic, brought into being by calling it with the
+// channel's name.
+type PerTopic func(ctx context.Context, channel string) error
 
-// Name is the per-topic channel of topicID, or InvalidContent.
-func Name(topicID string) (string, error) {
+// Resolve follows infra's convention (core/chaincode/contracts/topic.go); a
+// canonical UUID is a valid channel name.
+func (PerTopic) Resolve(topicID string) (string, error) {
 	u, err := store.ParseID(store.TopicID, topicID)
 	if err != nil {
 		return "", err
 	}
-	return Prefix + u.String(), nil
+	return "metacensus.topic." + u.String(), nil
 }
 
-// PerTopic is a channel per topic, named by Name and brought into being by
-// create, which is given the channel name and held to Provision's contract.
-func PerTopic(create func(ctx context.Context, channel string) error) Channels {
-	return perTopic{create: create}
-}
-
-type perTopic struct {
-	create func(ctx context.Context, channel string) error
-}
-
-func (perTopic) Resolve(topicID string) (string, error) { return Name(topicID) }
-
-func (p perTopic) Provision(ctx context.Context, topicID string) error {
-	channel, err := Name(topicID)
+func (create PerTopic) Provision(ctx context.Context, topicID string) error {
+	channel, err := create.Resolve(topicID)
 	if err != nil {
 		return err
 	}
-	return p.create(ctx, channel)
+	return create(ctx, channel)
 }

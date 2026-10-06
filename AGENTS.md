@@ -8,9 +8,7 @@ A route starts in the contract and `store.Store`; here it needs a `wire` transac
 
 ## Rules below the seam
 
-- **A topic's props and votes live on the topic's channel**, `metacensus.topic.<uuid>`, named from the id with no lookup; users and topics stay on the global channel ([#3](https://github.com/metacensus/service-api-chain/issues/3), [#7](https://github.com/metacensus/service-api-chain/issues/7)). `internal/channels` is the seam: `Shared` is production until infra's Temporal workflows provision channels, `PerTopic` over `fabrictest.Provision` is the suites.
-- **CreateTopic is the one store method that is two steps**: the channel first, then the record on the global channel, so a listed topic takes a prop at once. A refused record leaves its channel behind; infra's orchestration will own the sequence, so nothing here repairs it.
-- **A topic channel reads keys and topics across channels** (`ledger.Global`, served by `GetKey` and `GetTopic` on the global channel). Fabric keeps such a read out of the transaction's read set, so it is not re-validated at commit: safe while keys and topics are only ever added.
+- **A topic's props and votes live on its own channel**, users and topics on the global one ([#3](https://github.com/metacensus/service-api-chain/issues/3), [#7](https://github.com/metacensus/service-api-chain/issues/7)); `channels.Shared` keeps every topic on the global channel until infra's Temporal workflows provision channels.
 - **Signatures are verified in chaincode**, under `ALLOWED_ORIGINS` — `go/store`'s promise, kept on the peer, not the gateway.
 
 ## Testing against Fabric
@@ -19,10 +17,10 @@ A route starts in the contract and `store.Store`; here it needs a `wire` transac
 |---|---|
 | `ledger` unit | `memkv` |
 | `gateway` unit + `storetest` | the real client encoding into the real `chaincode.Dispatch` over a `memkv` per channel, shared and per topic |
-| `gateway`, `-tags=integration` | Microfab, with the chaincode served from the test process: conflicts, the peer's refusal of a channel it has not joined, and `storetest` with a channel created per topic (about 25 a run, 0.4 s each) |
+| `gateway`, `-tags=integration` | Microfab, with the chaincode served from the test process: conflicts, the peer's refusal of a channel it has not joined, and `storetest` with a channel created per topic |
 | `integration/`, `-tags=artifact` | Microfab and both built images on one Docker network, over HTTP |
 
-- **[Microfab](https://github.com/hyperledger-labs/microfab)**: one container with the chaincode-as-a-service builder, so no Fabric binaries or docker-in-docker (`internal/fabrictest`). Its orderer runs a system channel, so a channel is created the classic way, a signed update broadcast to the orderer (`fabric-config/configtx`), not the participation API infra targets.
+- **[Microfab](https://github.com/hyperledger-labs/microfab)**: one container with the chaincode-as-a-service builder, so no Fabric binaries or docker-in-docker (`internal/fabrictest`).
 - **Prove a promise of `store.go` in `storetest`** in `metacensus/api`, not here. Test here only what is Fabric's: the wire, error classification, determinism.
 
 ## Not yet

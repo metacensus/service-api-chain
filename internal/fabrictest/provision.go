@@ -15,38 +15,32 @@ import (
 )
 
 // Microfab's orderer runs a system channel ("testchainid", solo consensus),
-// so a channel is created the classic way: a signed channel-creation update
-// broadcast to the orderer, which fills the orderer and consortium groups from
-// the system channel. consortium is the one its genesis block names, and Org1's
+// so a channel is created the classic way, not by the participation API infra
+// targets: a signed channel-creation update broadcast to the orderer, which
+// fills the orderer and consortium groups from the system channel. consortium is the one its genesis block names, and Org1's
 // group in it is keyed by MSP ID.
 const consortium = "SampleConsortium"
 
-// Provisioner is channels.PerTopic's create: Provision with name@pkgID.
+// Provisioner is channels.PerTopic's create: it creates the channel, joins the
+// peer, and defines name@pkgID (installed by Define) there; work already done
+// is success.
 func (f *Fab) Provisioner(name, pkgID string) func(ctx context.Context, channel string) error {
-	return func(ctx context.Context, channel string) error { return f.Provision(ctx, channel, name, pkgID) }
-}
-
-// Provision brings channel into being and defines name@pkgID (installed by
-// Define) on it: created on the orderer, joined by the peer, approved and
-// committed. Each step that finds its work already done is success, so a
-// re-run finishes a partial one. It returns once the definition is committed,
-// at which point the peer answers an invocation; measured on Microfab, the
-// whole takes about 380 ms, three of them orderer batch timeouts.
-func (f *Fab) Provision(ctx context.Context, channel, name, pkgID string) error {
-	if err := f.createChannel(ctx, channel); err != nil && !already(err, "existing channel") {
-		return fmt.Errorf("create %s: %w", channel, err)
+	return func(ctx context.Context, ch string) error {
+		if err := f.createChannel(ctx, ch); err != nil && !already(err, "existing channel") {
+			return fmt.Errorf("create %s: %w", ch, err)
+		}
+		block, err := f.genesisBlock(ctx, ch)
+		if err != nil {
+			return fmt.Errorf("fetch %s's genesis block: %w", ch, err)
+		}
+		if err := channel.JoinChannel(ctx, f.peer, f.admin, block); err != nil && !already(err, "already exists") {
+			return fmt.Errorf("join %s: %w", ch, err)
+		}
+		if err := f.define(ctx, ch, name, pkgID); err != nil {
+			return fmt.Errorf("define %s on %s: %w", name, ch, err)
+		}
+		return nil
 	}
-	block, err := f.genesisBlock(ctx, channel)
-	if err != nil {
-		return fmt.Errorf("fetch %s's genesis block: %w", channel, err)
-	}
-	if err := f.join(ctx, block); err != nil && !already(err, "already exists") {
-		return fmt.Errorf("join %s: %w", channel, err)
-	}
-	if err := f.define(ctx, channel, name, pkgID); err != nil {
-		return fmt.Errorf("define %s on %s: %w", name, channel, err)
-	}
-	return nil
 }
 
 func (f *Fab) createChannel(ctx context.Context, name string) error {
@@ -105,13 +99,5 @@ func (f *Fab) genesisBlock(ctx context.Context, name string) (*cb.Block, error) 
 	return channel.GetConfigBlockFromOrderer(ctx, f.orderer, f.admin, name, tls.Certificate{Certificate: [][]byte{{0}}})
 }
 
-func (f *Fab) join(ctx context.Context, block *cb.Block) error {
-	return channel.JoinChannel(ctx, f.conn, f.admin, block)
-}
-
-// already reports whether err is Fabric saying the step's work exists: the
-// orderer refuses an update to an "existing channel", the peer a ledger that
-// "already exists", the lifecycle a re-approval that would "redefine the
-// current committed sequence" and a re-commit whose "new definition must be
-// sequence 2".
+// already reports whether err is Fabric refusing work that is already done.
 func already(err error, mark string) bool { return strings.Contains(err.Error(), mark) }

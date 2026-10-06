@@ -45,11 +45,8 @@ func classify(err error) store.Kind {
 	return ""
 }
 
-// missingChannel reports the gateway refusing to invoke on a channel the peer
-// is not serving the chaincode on: for an evaluation, the peer has no config
-// for the channel; for a submission, discovery finds no endorser with the
-// chaincode's metadata there. Both are the peer's own words, pinned by the
-// integration suite.
+// missingChannel reports the peer refusing a channel it does not serve the
+// chaincode on, in the words TestStore_NoSuchChannel pins.
 func missingChannel(err error) bool {
 	s, ok := status.FromError(err)
 	if !ok {

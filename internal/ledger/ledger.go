@@ -52,17 +52,12 @@ type keyRecord struct {
 	PublicKey string `json:"publicKey"`
 }
 
-// Global is what every channel reads from the one that holds users and
-// topics: the key a signature names, and whether a prop's topic exists. On
-// that channel it is the world state itself (Local); on a topic channel it is
-// a cross-channel query, which is not in the transaction's read set and so is
-// not re-validated at commit. That is safe while keys and topics are only ever
-// added, never changed or removed.
+// Global is the users-and-topics channel as any channel reads it: Local on
+// that channel, a cross-channel query elsewhere. The query is outside the read
+// set and not re-validated at commit, which is safe only while keys and topics
+// are never changed or removed.
 type Global interface {
-	// Key returns the owner and public key bound to keyID; found is false when
-	// no key is.
 	Key(keyID string) (owner, publicKey string, found bool, err error)
-	// HasTopic reports whether topicID names a stored topic.
 	HasTopic(topicID string) (bool, error)
 }
 

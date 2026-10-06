@@ -3,6 +3,8 @@ package gateway
 import (
 	"context"
 
+	"github.com/metacensus/api/go/store"
+
 	"github.com/metacensus/service-api-chain/internal/channels"
 )
 
@@ -30,13 +32,10 @@ func (f *fakeContract) Evaluate(_ context.Context, name string, args [][]byte) (
 
 const globalChannel = "metacensus"
 
-// sharedStore is the store over one contract on one channel: the shape every
-// non-routing test wants.
-func sharedStore(f *fakeContract) *chainStore {
-	return newStore(func(string) invoker { return f }, globalChannel, channels.Shared(globalChannel)).(*chainStore)
+func sharedStore(f *fakeContract) store.Store {
+	return newStore(func(string) invoker { return f }, globalChannel, channels.Shared(globalChannel))
 }
 
-// fakeNetwork hands out a contract per channel and remembers which were asked for.
 type fakeNetwork struct {
 	contracts map[string]*fakeContract
 	asked     []string
@@ -48,6 +47,9 @@ func (n *fakeNetwork) contract(channel string) invoker {
 		return c
 	}
 	c := &fakeContract{}
+	if n.contracts == nil {
+		n.contracts = map[string]*fakeContract{}
+	}
 	n.contracts[channel] = c
 	return c
 }

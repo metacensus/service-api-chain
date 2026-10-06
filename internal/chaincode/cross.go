@@ -9,23 +9,15 @@ import (
 
 	"github.com/metacensus/api/go/store"
 
-	"github.com/metacensus/service-api-chain/internal/ledger"
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
-// Remote is ledger.Global for a topic channel, answered by this chaincode's
-// own transactions on the global channel: query runs fn there and returns what
-// it returned, an error carrying the Kind (NotFound for an absent record).
-func Remote(query func(fn string, args ...string) ([]byte, error)) ledger.Global {
-	return remote{query: query}
-}
+// Remote is ledger.Global for a topic channel: it runs fn on the global
+// channel, failing with store.NotFound for an absent record.
+type Remote func(fn string, args ...string) ([]byte, error)
 
-type remote struct {
-	query func(fn string, args ...string) ([]byte, error)
-}
-
-func (r remote) Key(keyID string) (owner, publicKey string, found bool, err error) {
-	out, err := r.query(wire.GetKey, keyID)
+func (query Remote) Key(keyID string) (owner, publicKey string, found bool, err error) {
+	out, err := query(wire.GetKey, keyID)
 	if errors.Is(err, store.NotFound) {
 		return "", "", false, nil
 	}
@@ -42,17 +34,15 @@ func (r remote) Key(keyID string) (owner, publicKey string, found bool, err erro
 	return string(items[0]), string(items[1]), true, nil
 }
 
-func (r remote) HasTopic(topicID string) (bool, error) {
-	_, err := r.query(wire.GetTopic, topicID)
+func (query Remote) HasTopic(topicID string) (bool, error) {
+	_, err := query(wire.GetTopic, topicID)
 	if errors.Is(err, store.NotFound) {
 		return false, nil
 	}
 	return err == nil, err
 }
 
-// invokeOnGlobal is Remote's query over the stub: a cross-channel invocation,
-// which Fabric runs read-only and keeps out of this transaction's read set.
-func invokeOnGlobal(stub shim.ChaincodeStubInterface, cfg Config) func(fn string, args ...string) ([]byte, error) {
+func invokeOnGlobal(stub shim.ChaincodeStubInterface, cfg Config) Remote {
 	return func(fn string, args ...string) ([]byte, error) {
 		invocation := append([][]byte{[]byte(fn)}, wire.EncodeStrings(args...)...)
 		resp := stub.InvokeChaincode(cfg.GlobalChaincode, invocation, cfg.GlobalChannel)

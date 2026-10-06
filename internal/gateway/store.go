@@ -31,9 +31,6 @@ func (i contractInvoker) Evaluate(ctx context.Context, name string, args [][]byt
 	return i.c.EvaluateWithContext(ctx, name, client.WithBytesArguments(args...))
 }
 
-// newStore routes users and topics to the global channel and each topic's
-// props and votes to the channel topics resolves, invoking the chaincode
-// through contract(channel).
 func newStore(contract func(channel string) invoker, global string, topics channels.Channels) store.Store {
 	return &chainStore{contract: contract, global: global, topics: topics}
 }
@@ -52,12 +49,9 @@ func (s *chainStore) EnrollUser(ctx context.Context, record *v1.UserSigned, publ
 	return s.submit(ctx, s.onGlobal(), wire.EnrollUser, args)
 }
 
-// CreateTopic is the one store method that is not one chaincode invocation:
-// the topic's channel is brought into being first, so a listed topic can take
-// a prop (storetest expects CreateProp to succeed right after), then the
-// record is written on the global channel. A refused record leaves a channel
-// with no topic; nothing here cleans that up, and infra's orchestration will
-// own the whole sequence in production.
+// CreateTopic provisions the topic's channel before the record, so a listed
+// topic takes a prop at once (storetest relies on it). A refused record
+// strands its channel; infra's orchestration will own the sequence.
 func (s *chainStore) CreateTopic(ctx context.Context, callerID string, record *v1.TopicSigned) error {
 	if err := s.topics.Provision(ctx, record.GetId()); err != nil {
 		return failure(wire.CreateTopic, err)
@@ -66,19 +60,11 @@ func (s *chainStore) CreateTopic(ctx context.Context, callerID string, record *v
 }
 
 func (s *chainStore) CreateProp(ctx context.Context, callerID string, record *v1.PropSigned) error {
-	to, err := s.topic(wire.CreateProp, record.GetContent().GetTopicId(), store.InvalidContent)
-	if err != nil {
-		return err
-	}
-	return s.write(ctx, to, wire.CreateProp, callerID, record)
+	return s.write(ctx, s.topic(record.GetContent().GetTopicId()), wire.CreateProp, callerID, record)
 }
 
 func (s *chainStore) SetVote(ctx context.Context, callerID string, record *v1.VoteSigned) error {
-	to, err := s.topic(wire.SetVote, record.GetContent().GetTopicId(), store.InvalidContent)
-	if err != nil {
-		return err
-	}
-	return s.write(ctx, to, wire.SetVote, callerID, record)
+	return s.write(ctx, s.topic(record.GetContent().GetTopicId()), wire.SetVote, callerID, record)
 }
 
 func (s *chainStore) Credential(ctx context.Context, email string) (id, passwordHash string, err error) {
@@ -105,11 +91,7 @@ func (s *chainStore) GetTopic(ctx context.Context, id string) (*v1.TopicSigned, 
 }
 
 func (s *chainStore) GetProp(ctx context.Context, topicID, propID string) (*v1.PropSigned, error) {
-	to, err := s.topic(wire.GetProp, topicID, store.NotFound)
-	if err != nil {
-		return nil, err
-	}
-	return getRecord[*v1.PropSigned](ctx, s, to, wire.GetProp, topicID, propID)
+	return getRecord[*v1.PropSigned](ctx, s, s.topic(topicID), wire.GetProp, topicID, propID)
 }
 
 func (s *chainStore) ListUsers(ctx context.Context) ([]*v1.UserSigned, error) {
@@ -121,38 +103,28 @@ func (s *chainStore) ListTopics(ctx context.Context) ([]*v1.TopicSigned, error) 
 }
 
 func (s *chainStore) ListProps(ctx context.Context, topicID string) ([]*v1.PropSigned, error) {
-	to, err := s.topic(wire.ListProps, topicID, store.NotFound)
-	if err != nil {
-		return nil, err
-	}
-	return listRecords[*v1.PropSigned](ctx, s, to, wire.ListProps, topicID)
+	return listRecords[*v1.PropSigned](ctx, s, s.topic(topicID), wire.ListProps, topicID)
 }
 
 func (s *chainStore) ListVotes(ctx context.Context, topicID, propID string) ([]*v1.VoteSigned, error) {
-	to, err := s.topic(wire.ListVotes, topicID, store.NotFound)
-	if err != nil {
-		return nil, err
-	}
-	return listRecords[*v1.VoteSigned](ctx, s, to, wire.ListVotes, topicID, propID)
+	return listRecords[*v1.VoteSigned](ctx, s, s.topic(topicID), wire.ListVotes, topicID, propID)
 }
 
-// target is the channel an invocation goes to. missing is the Kind the op's
-// contract gives a topic that does not exist, which is how a topic channel
-// that does not exist is answered, whether the id resolves to none or the
-// network has none; it is "" for the global channel, which always exists.
+// target is an op's channel. A topic's channel that cannot be resolved or is
+// not served answers as the topic not existing: InvalidContent for a write,
+// NotFound for a read. Under channels.Shared a topic's channel is the global
+// one, whose refusal stays what it is.
 type target struct {
-	channel string
-	missing store.Kind
+	channel  string
+	resolved error
+	onTopic  bool
 }
 
 func (s *chainStore) onGlobal() target { return target{channel: s.global} }
 
-func (s *chainStore) topic(op, topicID string, missing store.Kind) (target, error) {
+func (s *chainStore) topic(topicID string) target {
 	channel, err := s.topics.Resolve(topicID)
-	if err != nil {
-		return target{}, store.Errf(missing, op, err)
-	}
-	return target{channel: channel, missing: missing}, nil
+	return target{channel: channel, resolved: err, onTopic: channel != s.global}
 }
 
 func (s *chainStore) write(ctx context.Context, to target, op, callerID string, record proto.Message) error {
@@ -164,23 +136,29 @@ func (s *chainStore) write(ctx context.Context, to target, op, callerID string, 
 }
 
 func (s *chainStore) submit(ctx context.Context, to target, op string, args [][]byte) error {
+	if to.resolved != nil {
+		return store.Errf(store.InvalidContent, op, to.resolved)
+	}
 	if _, err := s.contract(to.channel).Submit(ctx, op, args); err != nil {
-		return to.failure(op, err)
+		return to.failure(store.InvalidContent, op, err)
 	}
 	return nil
 }
 
 func (s *chainStore) evaluate(ctx context.Context, to target, op string, args ...string) ([]byte, error) {
+	if to.resolved != nil {
+		return nil, store.Errf(store.NotFound, op, to.resolved)
+	}
 	out, err := s.contract(to.channel).Evaluate(ctx, op, wire.EncodeStrings(args...))
 	if err != nil {
-		return nil, to.failure(op, err)
+		return nil, to.failure(store.NotFound, op, err)
 	}
 	return out, nil
 }
 
-func (to target) failure(op string, err error) error {
-	if to.missing != "" && missingChannel(err) {
-		return store.Errf(to.missing, op, err)
+func (to target) failure(missing store.Kind, op string, err error) error {
+	if to.onTopic && missingChannel(err) {
+		return store.Errf(missing, op, err)
 	}
 	return failure(op, err)
 }

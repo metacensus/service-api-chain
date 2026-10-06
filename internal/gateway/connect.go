@@ -19,9 +19,8 @@ import (
 )
 
 // Connect dials the peer named by o and returns the store over its chaincode,
-// with users and topics on o.Channel and each topic's props and votes where
-// topics places them, and a close func that releases the gateway and then
-// the connection.
+// each topic's channel named by topics, and a close func that releases the
+// gateway and then the connection.
 func Connect(o Options, topics channels.Channels) (store.Store, func() error, error) {
 	id, sign, err := loadIdentity(o)
 	if err != nil {

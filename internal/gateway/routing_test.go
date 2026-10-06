@@ -27,8 +27,6 @@ var (
 	routedVote  = &v1.VoteSigned{Content: &v1.Vote{TopicId: topicID, PropId: propID, UserId: "u1"}}
 )
 
-// perTopicStore is the store over a per-topic network whose channels are
-// created by create.
 func perTopicStore(n *fakeNetwork, create func(context.Context, string) error) store.Store {
 	return newStore(n.contract, globalChannel, channels.PerTopic(create))
 }
@@ -61,7 +59,7 @@ func TestRouting(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run("success - "+tt.name, func(t *testing.T) {
-			n := &fakeNetwork{contracts: map[string]*fakeContract{}}
+			n := &fakeNetwork{}
 			// Every read decodes an empty record or list, which is the empty answer.
 			if err := tt.call(perTopicStore(n, nil)); err != nil {
 				t.Fatalf("err = %v", err)
@@ -78,7 +76,7 @@ func TestRouting(t *testing.T) {
 
 func TestRouting_CreateTopic(t *testing.T) {
 	t.Run("success - the channel is provisioned, then the record written on the global channel", func(t *testing.T) {
-		n := &fakeNetwork{contracts: map[string]*fakeContract{}}
+		n := &fakeNetwork{}
 		var order []string
 		create := func(_ context.Context, ch string) error { order = append(order, "provision "+ch); return nil }
 		if err := perTopicStore(n, create).CreateTopic(t.Context(), "u1", routedTopic); err != nil {
@@ -94,7 +92,7 @@ func TestRouting_CreateTopic(t *testing.T) {
 	})
 
 	t.Run("error - a failed provision writes nothing", func(t *testing.T) {
-		n := &fakeNetwork{contracts: map[string]*fakeContract{}}
+		n := &fakeNetwork{}
 		create := func(context.Context, string) error { return context.DeadlineExceeded }
 		err := perTopicStore(n, create).CreateTopic(t.Context(), "u1", routedTopic)
 		assertKind(t, err, store.Unavailable)
@@ -104,15 +102,13 @@ func TestRouting_CreateTopic(t *testing.T) {
 	})
 
 	t.Run("error - an id that is not a topic id is InvalidContent before anything runs", func(t *testing.T) {
-		n := &fakeNetwork{contracts: map[string]*fakeContract{}}
+		n := &fakeNetwork{}
 		create := func(context.Context, string) error { t.Fatal("provisioned"); return nil }
 		err := perTopicStore(n, create).CreateTopic(t.Context(), "u1", &v1.TopicSigned{Id: "elections"})
 		assertKind(t, err, store.InvalidContent)
 	})
 }
 
-// A topic id that resolves to no channel is answered as the op's contract
-// answers a topic that does not exist, without reaching the network.
 func TestRouting_NoSuchTopic(t *testing.T) {
 	const bad = "user:0192a642-817d-7a3e-a282-d7a282ebd482"
 	tests := []struct {
@@ -137,7 +133,7 @@ func TestRouting_NoSuchTopic(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run("error - "+tt.name, func(t *testing.T) {
-			n := &fakeNetwork{contracts: map[string]*fakeContract{}}
+			n := &fakeNetwork{}
 			err := tt.call(perTopicStore(n, nil))
 			assertKind(t, err, tt.want)
 			if !errors.Is(err, store.InvalidContent) {
@@ -150,9 +146,6 @@ func TestRouting_NoSuchTopic(t *testing.T) {
 	}
 }
 
-// The peer refusing a topic channel it does not serve is answered as a topic
-// that does not exist, but only on a topic channel: on the global channel,
-// which always exists, the same refusal stays what it is.
 func TestRouting_MissingChannel(t *testing.T) {
 	refusals := map[string]error{
 		"evaluate": status.Error(codes.Unavailable, "failed to get config for channel [x]: could not get last config for channel x"),
@@ -190,4 +183,9 @@ func TestRouting_MissingChannel(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("error - GetProp under Shared stays Unavailable", func(t *testing.T) {
+		_, err := sharedStore(&fakeContract{err: refusals["evaluate"]}).GetProp(t.Context(), topicID, propID)
+		assertKind(t, err, store.Unavailable)
+	})
 }

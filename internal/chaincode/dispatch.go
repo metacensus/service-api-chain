@@ -14,8 +14,6 @@ import (
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
-// Dispatch runs one transaction against kv, with global answering for the
-// users-and-topics channel (ledger.Local(kv) when kv is that channel).
 func Dispatch(kv ledger.KV, global ledger.Global, policy signing.Policy, fn string, args [][]byte) ([]byte, error) {
 	ctx := context.Background() // the ledger never blocks; there is nothing to cancel
 	s := ledger.New(kv, global, policy)
@@ -59,8 +57,6 @@ func Dispatch(kv ledger.KV, global ledger.Global, policy signing.Policy, fn stri
 		return list(args, 2, func(a []string) ([]*v1.VoteSigned, error) { return s.ListVotes(ctx, a[0], a[1]) })
 
 	case wire.GetKey:
-		// Answered from this channel's own state: it is the global channel's
-		// side of a topic channel's cross-channel query.
 		a, err := wire.DecodeStrings(args, 1)
 		if err != nil {
 			return nil, err

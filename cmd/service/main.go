@@ -30,8 +30,6 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	// Every topic shares the configured channel until infra's channel
-	// orchestration provides a per-topic provisioner.
 	st, closeGateway, err := gateway.Connect(cfg.Fabric, channels.Shared(cfg.Fabric.Channel))
 	if err != nil {
 		return err

@@ -8,7 +8,7 @@ import (
 	"github.com/metacensus/api/go/store"
 )
 
-func TestName(t *testing.T) {
+func TestPerTopic_Resolve(t *testing.T) {
 	tests := []struct {
 		name    string
 		topicID string
@@ -22,7 +22,7 @@ func TestName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Name(tt.topicID)
+			got, err := PerTopic(nil).Resolve(tt.topicID)
 			if tt.want == "" {
 				if !errors.Is(err, store.InvalidContent) {
 					t.Fatalf("err = %v, want InvalidContent", err)
