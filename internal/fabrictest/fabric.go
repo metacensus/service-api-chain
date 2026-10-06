@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/metacensus/service-api-chain/internal/gateway"
+	"github.com/metacensus/service-api-chain/internal/config"
 )
 
 const (
@@ -194,8 +194,8 @@ func (f *Fab) fetchAdmin(addr string) error {
 }
 
 // Options connects the gateway to the peer, as the admin, at chaincodeName.
-func (f *Fab) Options(chaincodeName string) gateway.Options {
-	return gateway.Options{
+func (f *Fab) Options(chaincodeName string) config.Fabric {
+	return config.Fabric{
 		PeerEndpoint: f.peerAddr,
 		MSPID:        MSPID,
 		CertFile:     f.CertFile,

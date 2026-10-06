@@ -16,12 +16,13 @@ import (
 	"github.com/metacensus/api/go/store"
 
 	"github.com/metacensus/service-api-chain/internal/channels"
+	"github.com/metacensus/service-api-chain/internal/config"
 )
 
 // Connect dials the peer named by o and returns the store over its chaincode,
 // each topic's channel named by topics, and a close func that releases the
 // gateway and then the connection.
-func Connect(o Options, topics channels.Channels) (store.Store, func() error, error) {
+func Connect(o config.Fabric, topics channels.Channels) (store.Store, func() error, error) {
 	id, sign, err := loadIdentity(o)
 	if err != nil {
 		return nil, nil, err
@@ -49,7 +50,7 @@ func Connect(o Options, topics channels.Channels) (store.Store, func() error, er
 	return newStore(contract, o.Channel, topics), closeAll, nil
 }
 
-func loadIdentity(o Options) (*identity.X509Identity, identity.Sign, error) {
+func loadIdentity(o config.Fabric) (*identity.X509Identity, identity.Sign, error) {
 	certPEM, err := os.ReadFile(o.CertFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gateway: read cert: %w", err)
@@ -78,7 +79,7 @@ func loadIdentity(o Options) (*identity.X509Identity, identity.Sign, error) {
 	return id, sign, nil
 }
 
-func dial(o Options) (*grpc.ClientConn, error) {
+func dial(o config.Fabric) (*grpc.ClientConn, error) {
 	creds := insecure.NewCredentials()
 	if o.PeerTLSCAFile != "" {
 		caPEM, err := os.ReadFile(o.PeerTLSCAFile)
