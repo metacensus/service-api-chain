@@ -1,6 +1,6 @@
 .PHONY: help build test test-race test-integration test-artifact \
         fmt fmt-check vet tidy-check golangci vuln lint check docker-build docker-build-chaincode \
-        release release-major release-minor release-patch latest
+        release latest
 
 .DEFAULT_GOAL := help
 
@@ -95,10 +95,6 @@ release:
 	@set -e; \
 	VERSION=$$(./scripts/version.sh "$(VERSION)" "$(TYPE)"); \
 	TAG="v$$VERSION"; \
-	if git rev-parse "$$TAG" >/dev/null 2>&1; then \
-		echo "Error: Tag $$TAG already exists"; \
-		exit 1; \
-	fi; \
 	if git ls-remote --exit-code --tags origin "refs/tags/$$TAG" >/dev/null 2>&1; then \
 		echo "Error: Tag $$TAG already exists on origin"; \
 		exit 1; \
@@ -125,18 +121,6 @@ release:
 	git tag -a "$$TAG" -m "Release $$VERSION" && \
 	git push origin "$$TAG" && \
 	echo "Released: $$TAG"
-
-## release-major — release, bumping the major
-release-major:
-	@$(MAKE) release TYPE=major
-
-## release-minor — release, bumping the minor
-release-minor:
-	@$(MAKE) release TYPE=minor
-
-## release-patch — release, bumping the patch
-release-patch:
-	@$(MAKE) release TYPE=patch
 
 ## latest — print the most recent version tag
 latest:
