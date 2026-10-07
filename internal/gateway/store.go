@@ -31,14 +31,13 @@ func (i contractInvoker) Evaluate(ctx context.Context, name string, args [][]byt
 	return i.c.EvaluateWithContext(ctx, name, client.WithBytesArguments(args...))
 }
 
-func newStore(contract func(channel string) invoker, global string, topics channels.Channels) store.Store {
-	return &chainStore{contract: contract, global: global, topics: topics}
+func newStore(contract func(channel string) invoker, provision channels.Provision) store.Store {
+	return &chainStore{contract: contract, provision: provision}
 }
 
 type chainStore struct {
-	contract func(channel string) invoker
-	global   string
-	topics   channels.Channels
+	contract  func(channel string) invoker
+	provision channels.Provision
 }
 
 func (s *chainStore) EnrollUser(ctx context.Context, record *v1.UserSigned, publicKey, passwordHash string) error {
@@ -46,29 +45,33 @@ func (s *chainStore) EnrollUser(ctx context.Context, record *v1.UserSigned, publ
 	if err != nil {
 		return failure(wire.EnrollUser, err)
 	}
-	return s.submit(ctx, s.onGlobal(), wire.EnrollUser, args)
+	return s.submit(ctx, on(channels.Users), wire.EnrollUser, args)
 }
 
 // CreateTopic provisions the topic's channel before the record, so a listed
 // topic takes a prop at once (storetest relies on it). A refused record
-// strands its channel; infra's orchestration will own the sequence.
+// strands its channel.
 func (s *chainStore) CreateTopic(ctx context.Context, callerID string, record *v1.TopicSigned) error {
-	if err := s.topics.Provision(ctx, record.GetId()); err != nil {
+	channel, err := channels.Topic(record.GetId())
+	if err == nil && s.provision != nil {
+		err = s.provision(ctx, channel)
+	}
+	if err != nil {
 		return failure(wire.CreateTopic, err)
 	}
-	return s.write(ctx, s.onGlobal(), wire.CreateTopic, callerID, record)
+	return s.write(ctx, on(channels.Topics), wire.CreateTopic, callerID, record)
 }
 
 func (s *chainStore) CreateProp(ctx context.Context, callerID string, record *v1.PropSigned) error {
-	return s.write(ctx, s.topic(record.GetContent().GetTopicId()), wire.CreateProp, callerID, record)
+	return s.write(ctx, onTopic(record.GetContent().GetTopicId()), wire.CreateProp, callerID, record)
 }
 
 func (s *chainStore) SetVote(ctx context.Context, callerID string, record *v1.VoteSigned) error {
-	return s.write(ctx, s.topic(record.GetContent().GetTopicId()), wire.SetVote, callerID, record)
+	return s.write(ctx, onTopic(record.GetContent().GetTopicId()), wire.SetVote, callerID, record)
 }
 
 func (s *chainStore) Credential(ctx context.Context, email string) (id, passwordHash string, err error) {
-	out, err := s.evaluate(ctx, s.onGlobal(), wire.Credential, email)
+	out, err := s.evaluate(ctx, on(channels.Users), wire.Credential, email)
 	if err != nil {
 		return "", "", err
 	}
@@ -83,48 +86,47 @@ func (s *chainStore) Credential(ctx context.Context, email string) (id, password
 }
 
 func (s *chainStore) GetUser(ctx context.Context, id string) (*v1.UserSigned, error) {
-	return getRecord[*v1.UserSigned](ctx, s, s.onGlobal(), wire.GetUser, id)
+	return getRecord[*v1.UserSigned](ctx, s, on(channels.Users), wire.GetUser, id)
 }
 
 func (s *chainStore) GetTopic(ctx context.Context, id string) (*v1.TopicSigned, error) {
-	return getRecord[*v1.TopicSigned](ctx, s, s.onGlobal(), wire.GetTopic, id)
+	return getRecord[*v1.TopicSigned](ctx, s, on(channels.Topics), wire.GetTopic, id)
 }
 
 func (s *chainStore) GetProp(ctx context.Context, topicID, propID string) (*v1.PropSigned, error) {
-	return getRecord[*v1.PropSigned](ctx, s, s.topic(topicID), wire.GetProp, topicID, propID)
+	return getRecord[*v1.PropSigned](ctx, s, onTopic(topicID), wire.GetProp, topicID, propID)
 }
 
 func (s *chainStore) ListUsers(ctx context.Context) ([]*v1.UserSigned, error) {
-	return listRecords[*v1.UserSigned](ctx, s, s.onGlobal(), wire.ListUsers)
+	return listRecords[*v1.UserSigned](ctx, s, on(channels.Users), wire.ListUsers)
 }
 
 func (s *chainStore) ListTopics(ctx context.Context) ([]*v1.TopicSigned, error) {
-	return listRecords[*v1.TopicSigned](ctx, s, s.onGlobal(), wire.ListTopics)
+	return listRecords[*v1.TopicSigned](ctx, s, on(channels.Topics), wire.ListTopics)
 }
 
 func (s *chainStore) ListProps(ctx context.Context, topicID string) ([]*v1.PropSigned, error) {
-	return listRecords[*v1.PropSigned](ctx, s, s.topic(topicID), wire.ListProps, topicID)
+	return listRecords[*v1.PropSigned](ctx, s, onTopic(topicID), wire.ListProps, topicID)
 }
 
 func (s *chainStore) ListVotes(ctx context.Context, topicID, propID string) ([]*v1.VoteSigned, error) {
-	return listRecords[*v1.VoteSigned](ctx, s, s.topic(topicID), wire.ListVotes, topicID, propID)
+	return listRecords[*v1.VoteSigned](ctx, s, onTopic(topicID), wire.ListVotes, topicID, propID)
 }
 
 // target is an op's channel. A topic's channel that cannot be resolved or is
 // not served answers as the topic not existing: InvalidContent for a write,
-// NotFound for a read. Under channels.Shared a topic's channel is the global
-// one, whose refusal stays what it is.
+// NotFound for a read; a global channel's refusal stays what it is.
 type target struct {
 	channel    string
 	unresolved error
-	onTopic    bool
+	topic      bool
 }
 
-func (s *chainStore) onGlobal() target { return target{channel: s.global} }
+func on(channel string) target { return target{channel: channel} }
 
-func (s *chainStore) topic(topicID string) target {
-	channel, err := s.topics.Resolve(topicID)
-	return target{channel: channel, unresolved: err, onTopic: channel != s.global}
+func onTopic(topicID string) target {
+	channel, err := channels.Topic(topicID)
+	return target{channel: channel, unresolved: err, topic: true}
 }
 
 func (s *chainStore) write(ctx context.Context, to target, op, callerID string, record proto.Message) error {
@@ -157,7 +159,7 @@ func (s *chainStore) evaluate(ctx context.Context, to target, op string, args ..
 }
 
 func (to target) failure(missing store.Kind, op string, err error) error {
-	if to.onTopic && missingChannel(err) {
+	if to.topic && missingChannel(err) {
 		return store.Errf(missing, op, err)
 	}
 	return failure(op, err)

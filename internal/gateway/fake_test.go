@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/metacensus/api/go/store"
-
-	"github.com/metacensus/service-api-chain/internal/channels"
 )
 
 type call struct {
@@ -30,10 +28,8 @@ func (f *fakeContract) Evaluate(_ context.Context, name string, args [][]byte) (
 	return f.out, f.err
 }
 
-const globalChannel = "metacensus"
-
-func sharedStore(f *fakeContract) store.Store {
-	return newStore(func(string) invoker { return f }, globalChannel, channels.Shared(globalChannel))
+func storeOver(f *fakeContract) store.Store {
+	return newStore(func(string) invoker { return f }, nil)
 }
 
 type fakeNetwork struct {

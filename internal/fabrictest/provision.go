@@ -24,7 +24,7 @@ const consortium = "SampleConsortium"
 
 // Provisioner creates each topic's channel, joins the peer, and defines
 // name@pkgID (installed by Define) there.
-func (f *Fab) Provisioner(name, pkgID string) channels.PerTopic {
+func (f *Fab) Provisioner(name, pkgID string) channels.Provision {
 	return func(ctx context.Context, ch string) error {
 		if err := f.createChannel(ctx, ch); err != nil && !already(err, "existing channel") {
 			return fmt.Errorf("create %s: %w", ch, err)
@@ -36,10 +36,7 @@ func (f *Fab) Provisioner(name, pkgID string) channels.PerTopic {
 		if err := channel.JoinChannel(ctx, f.peer, f.admin, block); err != nil && !already(err, "already exists") {
 			return fmt.Errorf("join %s: %w", ch, err)
 		}
-		if err := f.define(ctx, ch, name, pkgID); err != nil {
-			return fmt.Errorf("define %s on %s: %w", name, ch, err)
-		}
-		return nil
+		return f.define(ctx, ch, name, pkgID)
 	}
 }
 

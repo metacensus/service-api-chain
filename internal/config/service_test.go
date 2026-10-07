@@ -8,7 +8,6 @@ var serviceBase = map[string]string{
 	"FABRIC_MSP_ID":        "Org1MSP",
 	"FABRIC_CERT":          "/id/cert.pem",
 	"FABRIC_KEY":           "/id/key.pem",
-	"FABRIC_CHANNEL":       "metacensus",
 	"FABRIC_CHAINCODE":     "store",
 }
 
@@ -24,16 +23,16 @@ func TestLoadService(t *testing.T) {
 			want: Service{Port: defaultPort, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051", PeerTLSCAFile: "/certs/ca.pem",
 				MSPID: "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
-				Global: Global{Channel: "metacensus", Chaincode: "store"},
+				Chaincode: "store",
 			}},
 		},
 		{
 			name:     "success - explicit port, authority and trimmed values",
-			override: map[string]string{"PORT": "8080", "FABRIC_PEER_AUTHORITY": "peer0.org1", "FABRIC_CHANNEL": " metacensus "},
+			override: map[string]string{"PORT": "8080", "FABRIC_PEER_AUTHORITY": "peer0.org1", "FABRIC_CHAINCODE": " store "},
 			want: Service{Port: 8080, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051", PeerTLSCAFile: "/certs/ca.pem", PeerAuthority: "peer0.org1",
 				MSPID: "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
-				Global: Global{Channel: "metacensus", Chaincode: "store"},
+				Chaincode: "store",
 			}},
 		},
 		{
@@ -42,7 +41,7 @@ func TestLoadService(t *testing.T) {
 			want: Service{Port: defaultPort, Fabric: Fabric{
 				PeerEndpoint: "peer.example:7051",
 				MSPID:        "Org1MSP", CertFile: "/id/cert.pem", KeyFile: "/id/key.pem",
-				Global: Global{Channel: "metacensus", Chaincode: "store"},
+				Chaincode: "store",
 			}},
 		},
 		{
@@ -74,12 +73,12 @@ func TestLoadService(t *testing.T) {
 			name: "error - everything missing is reported at once",
 			override: map[string]string{
 				"FABRIC_PEER_ENDPOINT": "", "FABRIC_PEER_TLS_CA": "", "FABRIC_MSP_ID": "",
-				"FABRIC_CERT": "", "FABRIC_KEY": "", "FABRIC_CHANNEL": "", "FABRIC_CHAINCODE": "",
+				"FABRIC_CERT": "", "FABRIC_KEY": "", "FABRIC_CHAINCODE": "",
 			},
 			problems: []string{
 				"FABRIC_PEER_ENDPOINT is required", "FABRIC_PEER_TLS_CA is required",
 				"FABRIC_MSP_ID is required", "FABRIC_CERT is required", "FABRIC_KEY is required",
-				"FABRIC_CHANNEL is required", "FABRIC_CHAINCODE is required",
+				"FABRIC_CHAINCODE is required",
 			},
 		},
 	}

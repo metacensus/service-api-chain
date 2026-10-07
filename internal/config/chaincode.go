@@ -8,18 +8,15 @@ import (
 type Chaincode struct {
 	ID      string
 	Address string
+	// Name is what the peers define this chaincode as, on every channel.
+	Name string
 	// AllowedOrigins are the WebAuthn origins a user signature may name.
 	AllowedOrigins          []string
 	TLSCertFile, TLSKeyFile string
 	// TLSClientCAFile, when set, makes the server verify the peer (mutual TLS).
 	TLSClientCAFile string
 	Plaintext       bool
-	Global          Global
 }
-
-// Global names the channel holding users and topics and the chaincode's name
-// there; an empty Channel makes every channel its own global.
-type Global struct{ Channel, Chaincode string }
 
 // LoadChaincode never infers plaintext; CHAINCODE_PLAINTEXT=1 must ask for it.
 func LoadChaincode(getenv func(string) string) (Chaincode, error) {
@@ -28,17 +25,11 @@ func LoadChaincode(getenv func(string) string) (Chaincode, error) {
 	c := Chaincode{
 		ID:              r.required("CHAINCODE_ID"),
 		Address:         r.hostPort("CHAINCODE_SERVER_ADDRESS"),
+		Name:            r.required("CHAINCODE_NAME"),
 		TLSCertFile:     r.optional("CHAINCODE_TLS_CERT"),
 		TLSKeyFile:      r.optional("CHAINCODE_TLS_KEY"),
 		TLSClientCAFile: r.optional("CHAINCODE_TLS_CLIENT_CA"),
 		Plaintext:       r.optional("CHAINCODE_PLAINTEXT") == "1",
-		Global: Global{
-			Channel:   r.optional("GLOBAL_CHANNEL"),
-			Chaincode: r.optional("GLOBAL_CHAINCODE"),
-		},
-	}
-	if (c.Global.Channel == "") != (c.Global.Chaincode == "") {
-		r.problemf("GLOBAL_CHANNEL and GLOBAL_CHAINCODE must be set together")
 	}
 
 	if raw := r.required("ALLOWED_ORIGINS"); raw != "" {
