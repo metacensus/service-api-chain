@@ -78,6 +78,22 @@ func TestLoadChaincode(t *testing.T) {
 			override: map[string]string{"CHAINCODE_TLS_CERT": "", "CHAINCODE_TLS_KEY": "", "CHAINCODE_PLAINTEXT": "1", "CHAINCODE_TLS_CLIENT_CA": "/tls/ca.pem"},
 			problems: []string{"CHAINCODE_TLS_CLIENT_CA needs TLS"},
 		},
+		{
+			name:     "success - the global channel and the chaincode's name there",
+			override: map[string]string{"GLOBAL_CHANNEL": "metacensus", "GLOBAL_CHAINCODE": "store"},
+			want: Chaincode{ID: "store:abc", Address: ":9999", AllowedOrigins: []string{"https://metacensus.example"},
+				TLSCertFile: "/tls/cert.pem", TLSKeyFile: "/tls/key.pem", Global: Global{Channel: "metacensus", Chaincode: "store"}},
+		},
+		{
+			name:     "error - the global channel without the chaincode's name",
+			override: map[string]string{"GLOBAL_CHANNEL": "metacensus"},
+			problems: []string{"GLOBAL_CHANNEL and GLOBAL_CHAINCODE must be set together"},
+		},
+		{
+			name:     "error - the chaincode's name without the global channel",
+			override: map[string]string{"GLOBAL_CHAINCODE": "store"},
+			problems: []string{"GLOBAL_CHANNEL and GLOBAL_CHAINCODE must be set together"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

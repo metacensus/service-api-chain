@@ -52,12 +52,53 @@ type keyRecord struct {
 	PublicKey string `json:"publicKey"`
 }
 
+// Global is the users-and-topics channel as any channel reads it: Local on
+// that channel, a cross-channel query elsewhere. The query is outside the read
+// set and not re-validated at commit, which is safe only while keys and topics
+// are never changed or removed.
+type Global interface {
+	Key(keyID string) (owner, publicKey string, found bool, err error)
+	HasTopic(topicID string) (bool, error)
+}
+
+func Local(kv KV) Global { return local{kv} }
+
+type local struct{ kv KV }
+
+func (g local) Key(keyID string) (owner, publicKey string, found bool, err error) {
+	k, err := g.kv.Key(keyType, keyID)
+	if err != nil {
+		return "", "", false, nil // a key_id the world state cannot hold names no enrolled key
+	}
+	b, err := g.kv.Get(k)
+	if err != nil || b == nil {
+		return "", "", false, err
+	}
+	var rec keyRecord
+	if err := json.Unmarshal(b, &rec); err != nil {
+		return "", "", false, err
+	}
+	return rec.Owner, rec.PublicKey, true, nil
+}
+
+func (g local) HasTopic(topicID string) (bool, error) {
+	k, err := g.kv.Key(topicType, topicID)
+	if err != nil {
+		return false, nil // an id the world state cannot hold names no topic
+	}
+	b, err := g.kv.Get(k)
+	return b != nil, err
+}
+
 type ledger struct {
 	kv     KV
+	global Global
 	policy signing.Policy
 }
 
-func New(kv KV, policy signing.Policy) store.Store { return &ledger{kv: kv, policy: policy} }
+func New(kv KV, global Global, policy signing.Policy) store.Store {
+	return &ledger{kv: kv, global: global, policy: policy}
+}
 
 type op string
 
@@ -185,19 +226,14 @@ func validID(o op, kind store.IDKind, id string) error {
 }
 
 func (l *ledger) authorize(o op, callerID string, content proto.Message, interp *v1.Interpretation, sig *v1.Signature) error {
-	k, err := l.kv.Key(keyType, sig.GetKeyId())
+	owner, publicKey, found, err := l.global.Key(sig.GetKeyId())
 	if err != nil {
-		return o.kind(store.Unauthenticated, nil) // a key_id the world state cannot hold names no enrolled key
+		return o.wrap(err)
 	}
-	var rec keyRecord
-	found, err := l.load(o, k, &rec)
-	if err != nil {
-		return err
-	}
-	if !found || rec.Owner != callerID {
+	if !found || owner != callerID {
 		return o.kind(store.Unauthenticated, nil)
 	}
-	pub, err := signing.DecodePublicKey(rec.PublicKey)
+	pub, err := signing.DecodePublicKey(publicKey)
 	if err != nil {
 		return o.wrap(err)
 	}
@@ -310,13 +346,9 @@ func (l *ledger) CreateProp(_ context.Context, callerID string, record *v1.PropS
 		return err
 	}
 	topicID := record.GetContent().GetTopicId()
-	topicKey, err := l.key(o, topicType, topicID)
+	hasTopic, err := l.global.HasTopic(topicID)
 	if err != nil {
-		return err
-	}
-	hasTopic, err := l.exists(o, topicKey)
-	if err != nil {
-		return err
+		return o.wrap(err)
 	}
 	if !hasTopic {
 		return o.kind(store.InvalidContent, nil)

@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/hyperledger/fabric-admin-sdk v0.2.1
 	github.com/hyperledger/fabric-chaincode-go/v2 v2.3.0
+	github.com/hyperledger/fabric-config v0.3.1
 	github.com/hyperledger/fabric-gateway v1.12.1
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
 	github.com/metacensus/api v0.7.0

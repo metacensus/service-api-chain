@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/hyperledger/fabric-gateway/pkg/client"
 	"github.com/hyperledger/fabric-protos-go-apiv2/gateway"
@@ -42,6 +43,22 @@ func classify(err error) store.Kind {
 		}
 	}
 	return ""
+}
+
+// missingChannel reports the peer refusing a channel it does not serve the
+// chaincode on, in the words TestStore_NoSuchChannel pins.
+func missingChannel(err error) bool {
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	switch s.Code() {
+	case codes.Unavailable:
+		return strings.Contains(s.Message(), "could not get last config for channel")
+	case codes.FailedPrecondition:
+		return strings.Contains(s.Message(), "No metadata was found for chaincode")
+	}
+	return false
 }
 
 // An EndorseError is a status error whose details carry each peer's chaincode message.

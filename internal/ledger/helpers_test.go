@@ -74,7 +74,7 @@ type world struct {
 func newWorld(t *testing.T) *world { return &world{t: t, state: memkv.New()} }
 
 func (w *world) invoke(f func(store.Store) error) error {
-	return w.state.Invoke(func(tx *memkv.Tx) error { return f(ledger.New(tx, policy)) })
+	return w.state.Invoke(func(tx *memkv.Tx) error { return f(ledger.New(tx, ledger.Local(tx), policy)) })
 }
 
 func (w *world) must(f func(store.Store) error) {

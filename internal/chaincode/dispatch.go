@@ -14,9 +14,9 @@ import (
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
-func Dispatch(kv ledger.KV, policy signing.Policy, fn string, args [][]byte) ([]byte, error) {
+func Dispatch(kv ledger.KV, global ledger.Global, policy signing.Policy, fn string, args [][]byte) ([]byte, error) {
 	ctx := context.Background() // the ledger never blocks; there is nothing to cancel
-	s := ledger.New(kv, policy)
+	s := ledger.New(kv, global, policy)
 	switch fn {
 	case wire.EnrollUser:
 		record, publicKey, hash, err := wire.DecodeEnrollUser(args)
@@ -55,6 +55,20 @@ func Dispatch(kv ledger.KV, policy signing.Policy, fn string, args [][]byte) ([]
 		return list(args, 1, func(a []string) ([]*v1.PropSigned, error) { return s.ListProps(ctx, a[0]) })
 	case wire.ListVotes:
 		return list(args, 2, func(a []string) ([]*v1.VoteSigned, error) { return s.ListVotes(ctx, a[0], a[1]) })
+
+	case wire.GetKey:
+		a, err := wire.DecodeStrings(args, 1)
+		if err != nil {
+			return nil, err
+		}
+		owner, publicKey, found, err := ledger.Local(kv).Key(a[0])
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", fn, err)
+		}
+		if !found {
+			return nil, store.Errf(store.NotFound, fn, nil)
+		}
+		return wire.EncodeList(wire.EncodeStrings(owner, publicKey)), nil
 	}
 	return nil, store.Errf(store.InvalidContent, fn, fmt.Errorf("unknown transaction"))
 }
