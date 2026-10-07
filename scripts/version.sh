@@ -1,13 +1,12 @@
 #!/bin/bash
-# Mints the version `make release` tags: an explicit semver, or the next
-# major/minor/patch. VERSION_REGEX is release.yml's tag filter; keep them in step.
 # No prereleases: bump_version splits on `.`, and `sort -V` puts v0.1.0-rc.1 after v0.1.0.
 
 set -euo pipefail
 
+# Must match release.yml's tag filter, or the tag publishes nothing.
 VERSION_REGEX="^v?[0-9]+\.[0-9]+\.[0-9]+$"
 
-# grep exits 1 with no tags; pipefail would abort.
+# grep exits 1 when no tag matches.
 get_latest_version() {
     git tag -l "v*" | { grep -E "$VERSION_REGEX" || true; } | sort -V | tail -1 | sed 's/^v//'
 }
