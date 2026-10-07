@@ -9,16 +9,16 @@ import (
 
 	"github.com/metacensus/api/go/store"
 
-	"github.com/metacensus/service-api-chain/internal/config"
+	"github.com/metacensus/service-api-chain/internal/channels"
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
-// Remote is ledger.Global for a topic channel: it runs fn on the global
-// channel, failing with store.NotFound for an absent record.
-type Remote func(fn string, args ...string) ([]byte, error)
+// Remote is ledger.Global over a query failing with store.NotFound for an
+// absent record.
+type Remote func(channel, fn string, args ...string) ([]byte, error)
 
 func (query Remote) Key(keyID string) (owner, publicKey string, found bool, err error) {
-	out, err := query(wire.GetKey, keyID)
+	out, err := query(channels.Users, wire.GetKey, keyID)
 	if errors.Is(err, store.NotFound) {
 		return "", "", false, nil
 	}
@@ -36,21 +36,21 @@ func (query Remote) Key(keyID string) (owner, publicKey string, found bool, err 
 }
 
 func (query Remote) HasTopic(topicID string) (bool, error) {
-	_, err := query(wire.GetTopic, topicID)
+	_, err := query(channels.Topics, wire.GetTopic, topicID)
 	if errors.Is(err, store.NotFound) {
 		return false, nil
 	}
 	return err == nil, err
 }
 
-func invokeOnGlobal(stub shim.ChaincodeStubInterface, cfg config.Global) Remote {
-	return func(fn string, args ...string) ([]byte, error) {
+func invoke(stub shim.ChaincodeStubInterface, name string) Remote {
+	return func(channel, fn string, args ...string) ([]byte, error) {
 		invocation := append([][]byte{[]byte(fn)}, wire.EncodeStrings(args...)...)
-		resp := stub.InvokeChaincode(cfg.Chaincode, invocation, cfg.Channel)
+		resp := stub.InvokeChaincode(name, invocation, channel)
 		if resp.GetStatus() == http.StatusOK {
 			return resp.GetPayload(), nil
 		}
-		cause := fmt.Errorf("%s on %s: %s", fn, cfg.Channel, resp.GetMessage())
+		cause := fmt.Errorf("%s on %s: %s", fn, channel, resp.GetMessage())
 		if kind := wire.ParseKind(resp.GetMessage()); kind != "" {
 			return nil, store.Errf(kind, fn, cause)
 		}

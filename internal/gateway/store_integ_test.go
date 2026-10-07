@@ -22,7 +22,6 @@ import (
 	"github.com/metacensus/api/go/store/storetest"
 
 	"github.com/metacensus/service-api-chain/internal/chaincode"
-	"github.com/metacensus/service-api-chain/internal/config"
 	"github.com/metacensus/service-api-chain/internal/fabrictest"
 	"github.com/metacensus/service-api-chain/internal/gateway"
 )
@@ -70,8 +69,8 @@ func run(m *testing.M) int {
 	return f.Run(m)
 }
 
-// deployInProcess serves the chaincode from this process and defines it on
-// fabrictest.Channel; the returned pkgID is what topic channels define.
+// deployInProcess serves the chaincode from this process and defines it; the
+// returned pkgID is what topic channels define.
 func deployInProcess(ctx context.Context, f *fabrictest.Fab, srv *grpc.Server, lis net.Listener, port int) (name, pkgID string, err error) {
 	name = fabrictest.Unique("inproc")
 	pkg, pkgID, err := fabrictest.Pack(name, net.JoinHostPort(fabrictest.HostAlias, strconv.Itoa(port)))
@@ -80,7 +79,7 @@ func deployInProcess(ctx context.Context, f *fabrictest.Fab, srv *grpc.Server, l
 	}
 	pb.RegisterChaincodeServer(srv, &shim.ChaincodeServer{
 		CCID: pkgID,
-		CC:   chaincode.New(signing.ParticipantPolicy(storetest.Origin), config.Global{Channel: fabrictest.Channel, Chaincode: name}),
+		CC:   chaincode.New(signing.ParticipantPolicy(storetest.Origin), name),
 	})
 	go func() { _ = srv.Serve(lis) }()
 	return name, pkgID, f.Define(ctx, name, pkg, pkgID)

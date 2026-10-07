@@ -7,7 +7,7 @@ The store spans two deployables, built from this one module:
 - **the API** (`cmd/service`, `Dockerfile` target `service`), which reaches the peers through a Fabric gateway;
 - **the chaincode** (`cmd/chaincode`, target `chaincode`), chaincode-as-a-service the peers dial.
 
-Users and topics live on `FABRIC_CHANNEL`. Each topic's props and votes are meant for a channel of their own (`internal/channels`); until infra's Temporal workflows create channels, the API keeps every topic on that one channel.
+The peers serve the chaincode on `metacensus.users`, `metacensus.topics`, `metacensus.orgs`, and `metacensus.topic.<uuid>` per topic ([`internal/channels`](internal/channels/channels.go)). The API creates none of them; a prop on a topic whose channel does not exist yet is refused.
 
 Design decisions are in [AGENTS.md](AGENTS.md).
 
@@ -26,7 +26,7 @@ The API:
 | `FABRIC_PEER_TLS_CA` | PEM CA for the peer's TLS. Required unless `FABRIC_PEER_PLAINTEXT=1`. |
 | `FABRIC_PEER_AUTHORITY` | Optional gRPC authority / TLS server name override. |
 | `FABRIC_MSP_ID`, `FABRIC_CERT`, `FABRIC_KEY` | The identity every transaction is submitted under: its MSP and PEM cert and key paths. |
-| `FABRIC_CHANNEL`, `FABRIC_CHAINCODE` | The channel users and topics live on, and the chaincode's name there and on every topic channel. |
+| `FABRIC_CHAINCODE` | The chaincode's name on every channel. |
 | `PORT` | Default `3001`. |
 
 The chaincode:
@@ -34,10 +34,10 @@ The chaincode:
 | Variable | |
 |---|---|
 | `CHAINCODE_ID` | The package id the peer installed. |
+| `CHAINCODE_NAME` | This chaincode's name on every channel, by which it reads the others. |
 | `CHAINCODE_SERVER_ADDRESS` | `host:port` to listen on. |
 | `ALLOWED_ORIGINS` | Comma-separated WebAuthn origins a participant signature may name. |
 | `CHAINCODE_TLS_CERT`, `CHAINCODE_TLS_KEY`, `CHAINCODE_TLS_CLIENT_CA` | Server TLS, optionally mutual. Required unless `CHAINCODE_PLAINTEXT=1`. |
-| `GLOBAL_CHANNEL`, `GLOBAL_CHAINCODE` | The channel users and topics live on, and this chaincode's name there, which a topic channel reads keys and topics from. Set together, or neither when every channel is its own. |
 
 ## Tests
 

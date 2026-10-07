@@ -5,6 +5,7 @@ import "testing"
 var chaincodeBase = map[string]string{
 	"CHAINCODE_ID":             "store:abc",
 	"CHAINCODE_SERVER_ADDRESS": ":9999",
+	"CHAINCODE_NAME":           "store",
 	"ALLOWED_ORIGINS":          "https://metacensus.example",
 	"CHAINCODE_TLS_CERT":       "/tls/cert.pem",
 	"CHAINCODE_TLS_KEY":        "/tls/key.pem",
@@ -19,24 +20,24 @@ func TestLoadChaincode(t *testing.T) {
 	}{
 		{
 			name: "success - TLS",
-			want: Chaincode{ID: "store:abc", Address: ":9999", AllowedOrigins: []string{"https://metacensus.example"},
+			want: Chaincode{ID: "store:abc", Address: ":9999", Name: "store", AllowedOrigins: []string{"https://metacensus.example"},
 				TLSCertFile: "/tls/cert.pem", TLSKeyFile: "/tls/key.pem"},
 		},
 		{
 			name:     "success - mutual TLS and several trimmed origins",
 			override: map[string]string{"CHAINCODE_TLS_CLIENT_CA": "/tls/ca.pem", "ALLOWED_ORIGINS": "https://a.example, http://localhost:5173"},
-			want: Chaincode{ID: "store:abc", Address: ":9999", AllowedOrigins: []string{"https://a.example", "http://localhost:5173"},
+			want: Chaincode{ID: "store:abc", Address: ":9999", Name: "store", AllowedOrigins: []string{"https://a.example", "http://localhost:5173"},
 				TLSCertFile: "/tls/cert.pem", TLSKeyFile: "/tls/key.pem", TLSClientCAFile: "/tls/ca.pem"},
 		},
 		{
 			name:     "success - explicit plaintext",
 			override: map[string]string{"CHAINCODE_TLS_CERT": "", "CHAINCODE_TLS_KEY": "", "CHAINCODE_PLAINTEXT": "1"},
-			want:     Chaincode{ID: "store:abc", Address: ":9999", AllowedOrigins: []string{"https://metacensus.example"}, Plaintext: true},
+			want:     Chaincode{ID: "store:abc", Address: ":9999", Name: "store", AllowedOrigins: []string{"https://metacensus.example"}, Plaintext: true},
 		},
 		{
 			name:     "error - every required variable missing",
-			override: map[string]string{"CHAINCODE_ID": "", "CHAINCODE_SERVER_ADDRESS": "", "ALLOWED_ORIGINS": "", "CHAINCODE_TLS_CERT": "", "CHAINCODE_TLS_KEY": ""},
-			problems: []string{"CHAINCODE_ID is required", "CHAINCODE_SERVER_ADDRESS is required", "ALLOWED_ORIGINS is required", "CHAINCODE_TLS_CERT and CHAINCODE_TLS_KEY are required"},
+			override: map[string]string{"CHAINCODE_ID": "", "CHAINCODE_SERVER_ADDRESS": "", "CHAINCODE_NAME": "", "ALLOWED_ORIGINS": "", "CHAINCODE_TLS_CERT": "", "CHAINCODE_TLS_KEY": ""},
+			problems: []string{"CHAINCODE_ID is required", "CHAINCODE_SERVER_ADDRESS is required", "CHAINCODE_NAME is required", "ALLOWED_ORIGINS is required", "CHAINCODE_TLS_CERT and CHAINCODE_TLS_KEY are required"},
 		},
 		{
 			name:     "error - address without a port",
@@ -77,22 +78,6 @@ func TestLoadChaincode(t *testing.T) {
 			name:     "error - client CA without TLS",
 			override: map[string]string{"CHAINCODE_TLS_CERT": "", "CHAINCODE_TLS_KEY": "", "CHAINCODE_PLAINTEXT": "1", "CHAINCODE_TLS_CLIENT_CA": "/tls/ca.pem"},
 			problems: []string{"CHAINCODE_TLS_CLIENT_CA needs TLS"},
-		},
-		{
-			name:     "success - the global channel and the chaincode's name there",
-			override: map[string]string{"GLOBAL_CHANNEL": "metacensus", "GLOBAL_CHAINCODE": "store"},
-			want: Chaincode{ID: "store:abc", Address: ":9999", AllowedOrigins: []string{"https://metacensus.example"},
-				TLSCertFile: "/tls/cert.pem", TLSKeyFile: "/tls/key.pem", Global: Global{Channel: "metacensus", Chaincode: "store"}},
-		},
-		{
-			name:     "error - the global channel without the chaincode's name",
-			override: map[string]string{"GLOBAL_CHANNEL": "metacensus"},
-			problems: []string{"GLOBAL_CHANNEL and GLOBAL_CHAINCODE must be set together"},
-		},
-		{
-			name:     "error - the chaincode's name without the global channel",
-			override: map[string]string{"GLOBAL_CHAINCODE": "store"},
-			problems: []string{"GLOBAL_CHANNEL and GLOBAL_CHAINCODE must be set together"},
 		},
 	}
 	for _, tt := range tests {

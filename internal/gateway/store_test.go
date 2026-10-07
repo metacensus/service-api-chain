@@ -16,13 +16,19 @@ import (
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
+const (
+	topicID      = "topc:0192a642-817d-7a3e-a282-d7a282ebd482"
+	topicChannel = "metacensus.topic.0192a642-817d-7a3e-a282-d7a282ebd482"
+	propID       = "prop:0192a642-817d-7a3e-a282-d7a282ebd483"
+)
+
 var (
 	errBoom = errors.New("boom")
 
 	user  = &v1.UserSigned{Id: "u1"}
-	topic = &v1.TopicSigned{Id: "t1"}
-	prop  = &v1.PropSigned{Id: "p1", Content: &v1.Prop{TopicId: "t1"}}
-	vote  = &v1.VoteSigned{Content: &v1.Vote{TopicId: "t1", PropId: "p1", UserId: "u1"}}
+	topic = &v1.TopicSigned{Id: topicID}
+	prop  = &v1.PropSigned{Id: propID, Content: &v1.Prop{TopicId: topicID}}
+	vote  = &v1.VoteSigned{Content: &v1.Vote{TopicId: topicID, PropId: propID, UserId: "u1"}}
 )
 
 func mustRecord(t *testing.T, m proto.Message) []byte {
@@ -107,7 +113,7 @@ func TestStore_Writes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeContract{}
-			if err := tt.call(sharedStore(f)); err != nil {
+			if err := tt.call(storeOver(f)); err != nil {
 				t.Fatalf("err = %v", err)
 			}
 			assertCall(t, f, true, tt.method, tt.wantArgs(t))
@@ -115,13 +121,13 @@ func TestStore_Writes(t *testing.T) {
 
 		t.Run("error - "+tt.method+" classified from the chaincode", func(t *testing.T) {
 			f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.AlreadyExists))}
-			err := tt.call(sharedStore(f))
+			err := tt.call(storeOver(f))
 			assertKind(t, err, store.AlreadyExists)
 		})
 
 		t.Run("error - "+tt.method+" unclassified", func(t *testing.T) {
 			f := &fakeContract{err: errBoom}
-			err := tt.call(sharedStore(f))
+			err := tt.call(storeOver(f))
 			assertKind(t, err, "")
 			if !errors.Is(err, errBoom) {
 				t.Errorf("cause lost: %v", err)
@@ -148,7 +154,7 @@ func TestStore_Credential(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakeContract{out: tt.out, err: tt.err}
-			id, hash, err := sharedStore(f).Credential(t.Context(), "a@b.c")
+			id, hash, err := storeOver(f).Credential(t.Context(), "a@b.c")
 			assertCall(t, f, false, wire.Credential, [][]byte{[]byte("a@b.c")})
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
@@ -172,7 +178,7 @@ type getCase[R proto.Message] struct {
 func runGet[R proto.Message](t *testing.T, tt getCase[R]) {
 	t.Run("success - "+tt.name, func(t *testing.T) {
 		f := &fakeContract{out: mustRecord(t, tt.want)}
-		got, err := tt.call(sharedStore(f))
+		got, err := tt.call(storeOver(f))
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
@@ -183,12 +189,12 @@ func runGet[R proto.Message](t *testing.T, tt getCase[R]) {
 	})
 	t.Run("error - "+tt.name+" not found", func(t *testing.T) {
 		f := &fakeContract{err: statusWithDetails(t, codes.Aborted, wire.ErrorMessage(store.NotFound))}
-		_, err := tt.call(sharedStore(f))
+		_, err := tt.call(storeOver(f))
 		assertKind(t, err, store.NotFound)
 	})
 	t.Run("error - "+tt.name+" undecodable result", func(t *testing.T) {
 		f := &fakeContract{out: []byte{0xff, 0xff}}
-		_, err := tt.call(sharedStore(f))
+		_, err := tt.call(storeOver(f))
 		if err == nil {
 			t.Fatal("err = nil")
 		}
@@ -199,10 +205,10 @@ func runGet[R proto.Message](t *testing.T, tt getCase[R]) {
 func TestStore_Get(t *testing.T) {
 	runGet(t, getCase[*v1.UserSigned]{name: "GetUser", method: wire.GetUser, args: []string{"u1"}, want: user,
 		call: func(s store.Store) (*v1.UserSigned, error) { return s.GetUser(t.Context(), "u1") }})
-	runGet(t, getCase[*v1.TopicSigned]{name: "GetTopic", method: wire.GetTopic, args: []string{"t1"}, want: topic,
-		call: func(s store.Store) (*v1.TopicSigned, error) { return s.GetTopic(t.Context(), "t1") }})
-	runGet(t, getCase[*v1.PropSigned]{name: "GetProp", method: wire.GetProp, args: []string{"t1", "p1"}, want: prop,
-		call: func(s store.Store) (*v1.PropSigned, error) { return s.GetProp(t.Context(), "t1", "p1") }})
+	runGet(t, getCase[*v1.TopicSigned]{name: "GetTopic", method: wire.GetTopic, args: []string{topicID}, want: topic,
+		call: func(s store.Store) (*v1.TopicSigned, error) { return s.GetTopic(t.Context(), topicID) }})
+	runGet(t, getCase[*v1.PropSigned]{name: "GetProp", method: wire.GetProp, args: []string{topicID, propID}, want: prop,
+		call: func(s store.Store) (*v1.PropSigned, error) { return s.GetProp(t.Context(), topicID, propID) }})
 }
 
 type listCase[R proto.Message] struct {
@@ -216,7 +222,7 @@ type listCase[R proto.Message] struct {
 func runList[R proto.Message](t *testing.T, tt listCase[R]) {
 	t.Run("success - "+tt.name, func(t *testing.T) {
 		f := &fakeContract{out: mustList(t, tt.want)}
-		got, err := tt.call(sharedStore(f))
+		got, err := tt.call(storeOver(f))
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
@@ -226,17 +232,17 @@ func runList[R proto.Message](t *testing.T, tt listCase[R]) {
 		}
 	})
 	t.Run("success - "+tt.name+" empty", func(t *testing.T) {
-		got, err := tt.call(sharedStore(&fakeContract{}))
+		got, err := tt.call(storeOver(&fakeContract{}))
 		if err != nil || len(got) != 0 {
 			t.Errorf("got (%v, %v), want empty", got, err)
 		}
 	})
 	t.Run("error - "+tt.name+" unavailable", func(t *testing.T) {
-		_, err := tt.call(sharedStore(&fakeContract{err: context.Canceled}))
+		_, err := tt.call(storeOver(&fakeContract{err: context.Canceled}))
 		assertKind(t, err, store.Unavailable)
 	})
 	t.Run("error - "+tt.name+" malformed list", func(t *testing.T) {
-		_, err := tt.call(sharedStore(&fakeContract{out: []byte{0xff}}))
+		_, err := tt.call(storeOver(&fakeContract{out: []byte{0xff}}))
 		if err == nil {
 			t.Fatal("err = nil")
 		}
@@ -249,8 +255,8 @@ func TestStore_List(t *testing.T) {
 		call: func(s store.Store) ([]*v1.UserSigned, error) { return s.ListUsers(t.Context()) }})
 	runList(t, listCase[*v1.TopicSigned]{name: "ListTopics", method: wire.ListTopics, want: []*v1.TopicSigned{topic},
 		call: func(s store.Store) ([]*v1.TopicSigned, error) { return s.ListTopics(t.Context()) }})
-	runList(t, listCase[*v1.PropSigned]{name: "ListProps", method: wire.ListProps, args: []string{"t1"}, want: []*v1.PropSigned{prop},
-		call: func(s store.Store) ([]*v1.PropSigned, error) { return s.ListProps(t.Context(), "t1") }})
-	runList(t, listCase[*v1.VoteSigned]{name: "ListVotes", method: wire.ListVotes, args: []string{"t1", "p1"}, want: []*v1.VoteSigned{vote},
-		call: func(s store.Store) ([]*v1.VoteSigned, error) { return s.ListVotes(t.Context(), "t1", "p1") }})
+	runList(t, listCase[*v1.PropSigned]{name: "ListProps", method: wire.ListProps, args: []string{topicID}, want: []*v1.PropSigned{prop},
+		call: func(s store.Store) ([]*v1.PropSigned, error) { return s.ListProps(t.Context(), topicID) }})
+	runList(t, listCase[*v1.VoteSigned]{name: "ListVotes", method: wire.ListVotes, args: []string{topicID, propID}, want: []*v1.VoteSigned{vote},
+		call: func(s store.Store) ([]*v1.VoteSigned, error) { return s.ListVotes(t.Context(), topicID, propID) }})
 }

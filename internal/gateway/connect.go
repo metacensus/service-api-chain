@@ -19,10 +19,10 @@ import (
 	"github.com/metacensus/service-api-chain/internal/config"
 )
 
-// Connect dials the peer named by o and returns the store over its chaincode,
-// each topic's channel named by topics, and a close func that releases the
-// gateway and then the connection.
-func Connect(o config.Fabric, topics channels.Channels) (store.Store, func() error, error) {
+// Connect dials the peer named by o and returns the store over its chaincode
+// and a close func that releases the gateway and then the connection. A nil
+// provision leaves topic channels to whoever runs the network.
+func Connect(o config.Fabric, provision channels.Provision) (store.Store, func() error, error) {
 	id, sign, err := loadIdentity(o)
 	if err != nil {
 		return nil, nil, err
@@ -47,7 +47,7 @@ func Connect(o config.Fabric, topics channels.Channels) (store.Store, func() err
 	contract := func(channel string) invoker {
 		return contractInvoker{gw.GetNetwork(channel).GetContract(o.Chaincode)}
 	}
-	return newStore(contract, o.Channel, topics), closeAll, nil
+	return newStore(contract, provision), closeAll, nil
 }
 
 func loadIdentity(o config.Fabric) (*identity.X509Identity, identity.Sign, error) {

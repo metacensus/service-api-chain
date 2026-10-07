@@ -15,23 +15,25 @@ import (
 
 	"github.com/metacensus/service-api-chain/internal/chaincode"
 	"github.com/metacensus/service-api-chain/internal/channels"
-	"github.com/metacensus/service-api-chain/internal/ledger"
 	"github.com/metacensus/service-api-chain/internal/ledger/memkv"
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
 var policy = signing.ParticipantPolicy(storetest.Origin)
 
-// network is Fabric in process: a memkv per created channel, failures surfaced
-// as a peer surfaces them.
+// network is Fabric in process: a memkv per channel, failures surfaced as a
+// peer surfaces them.
 type network struct {
 	mu     sync.Mutex
 	states map[string]*memkv.Store
-	global string
 }
 
-func newNetwork(global string) *network {
-	return &network{states: map[string]*memkv.Store{global: memkv.New()}, global: global}
+func newNetwork() *network {
+	n := &network{states: map[string]*memkv.Store{}}
+	for _, ch := range channels.Global {
+		n.states[ch] = memkv.New()
+	}
+	return n
 }
 
 func (n *network) create(_ context.Context, channel string) error {
@@ -70,7 +72,7 @@ func (n *network) invoke(channel, name string, args [][]byte) (out []byte, err e
 		return nil, noSuchChannel(channel)
 	}
 	err = state.Invoke(func(tx *memkv.Tx) (err error) {
-		out, err = chaincode.Dispatch(tx, n.globalFor(channel, tx), policy, name, args)
+		out, err = chaincode.Dispatch(tx, chaincode.Remote(n.query), policy, name, args)
 		return err
 	})
 	if err != nil {
@@ -79,16 +81,9 @@ func (n *network) invoke(channel, name string, args [][]byte) (out []byte, err e
 	return out, nil
 }
 
-func (n *network) globalFor(channel string, tx *memkv.Tx) ledger.Global {
-	if channel != n.global {
-		return chaincode.Remote(n.query)
-	}
-	return ledger.Local(tx)
-}
-
-func (n *network) query(fn string, args ...string) ([]byte, error) {
-	tx := n.state(n.global).Begin()
-	return chaincode.Dispatch(tx, ledger.Local(tx), policy, fn, wire.EncodeStrings(args...))
+func (n *network) query(channel, fn string, args ...string) ([]byte, error) {
+	tx := n.state(channel).Begin()
+	return chaincode.Dispatch(tx, chaincode.Remote(n.query), policy, fn, wire.EncodeStrings(args...))
 }
 
 func peerError(err error) error {
@@ -101,21 +96,10 @@ func peerError(err error) error {
 }
 
 func TestConformance(t *testing.T) {
-	t.Run("shared channel", func(t *testing.T) {
-		n := newNetwork(globalChannel)
-		storetest.Run(t, storetest.Harness{
-			Open: func(*testing.T) store.Store {
-				return newStore(n.contract, globalChannel, channels.Shared(globalChannel))
-			},
-			Signatures: storetest.Hard,
-		})
-	})
-	t.Run("channel per topic", func(t *testing.T) {
-		n := newNetwork(globalChannel)
-		storetest.Run(t, storetest.Harness{
-			Open:       func(*testing.T) store.Store { return newStore(n.contract, globalChannel, channels.PerTopic(n.create)) },
-			Signatures: storetest.Hard,
-		})
+	n := newNetwork()
+	storetest.Run(t, storetest.Harness{
+		Open:       func(*testing.T) store.Store { return newStore(n.contract, n.create) },
+		Signatures: storetest.Hard,
 	})
 }
 

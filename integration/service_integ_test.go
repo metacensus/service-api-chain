@@ -23,6 +23,7 @@ import (
 	"github.com/metacensus/api/go/server/routes"
 	"github.com/metacensus/api/go/store/storetest"
 
+	"github.com/metacensus/service-api-chain/internal/channels"
 	"github.com/metacensus/service-api-chain/internal/fabrictest"
 )
 
@@ -117,6 +118,7 @@ func TestImages_Serve(t *testing.T) {
 	cc.Env = map[string]string{
 		"CHAINCODE_ID":             pkgID,
 		"CHAINCODE_SERVER_ADDRESS": fmt.Sprintf(":%d", chaincodePort),
+		"CHAINCODE_NAME":           name,
 		"ALLOWED_ORIGINS":          appOrigin,
 		"CHAINCODE_PLAINTEXT":      "1",
 	}
@@ -134,7 +136,6 @@ func TestImages_Serve(t *testing.T) {
 		"FABRIC_MSP_ID":         fabrictest.MSPID,
 		"FABRIC_CERT":           containerCert,
 		"FABRIC_KEY":            containerKey,
-		"FABRIC_CHANNEL":        fabrictest.Channel,
 		"FABRIC_CHAINCODE":      name,
 	}
 	svc.Files = []testcontainers.ContainerFile{
@@ -197,6 +198,13 @@ func TestImages_Serve(t *testing.T) {
 			Content: topic, Interpretation: interp, UserSignature: sig,
 		}, &topicRec)
 		topicID := topicRec.GetId()
+		topicChannel, err := channels.Topic(topicID)
+		if err == nil {
+			err = f.Provisioner(name, pkgID)(ctx, topicChannel)
+		}
+		if err != nil {
+			t.Fatalf("provision %s's channel: %v", topicID, err)
+		}
 
 		prop := &v1.Prop{TopicId: topicID, Type: v1.Prop_Statement, Description: "ranked choice"}
 		interp, sig = me.Sign(t, appOrigin, prop)

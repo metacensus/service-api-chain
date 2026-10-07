@@ -52,10 +52,10 @@ type keyRecord struct {
 	PublicKey string `json:"publicKey"`
 }
 
-// Global is the users-and-topics channel as any channel reads it: Local on
-// that channel, a cross-channel query elsewhere. The query is outside the read
-// set and not re-validated at commit, which is safe only while keys and topics
-// are never changed or removed.
+// Global is what the users and topics channels own, as a write on another
+// channel reads it. That read is outside the read set and not re-validated at
+// commit, which is safe only while keys and topics are never changed or
+// removed.
 type Global interface {
 	Key(keyID string) (owner, publicKey string, found bool, err error)
 	HasTopic(topicID string) (bool, error)

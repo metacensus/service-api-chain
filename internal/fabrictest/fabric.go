@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,12 +27,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/metacensus/service-api-chain/internal/channels"
 	"github.com/metacensus/service-api-chain/internal/config"
 )
 
 const (
-	Channel = "metacensus"
-	MSPID   = "Org1MSP"
+	MSPID = "Org1MSP"
+	org   = "Org1"
 
 	// Microfab's HTTP API, and the peer's own gRPC port. The peer is dialled
 	// directly: Microfab's authority-routed proxy on 8080 intermittently drops
@@ -48,9 +50,15 @@ const (
 	// PeerAddr is how a container on Fab.Network reaches the peer.
 	PeerAddr      = microfabAlias + ":2000"
 	microfabAlias = "microfab"
-
-	microfabConfig = `{"endorsing_organizations":[{"name":"Org1"}],"channels":[{"name":"metacensus","endorsing_organizations":["Org1"]}],"couchdb":false,"certificate_authorities":false}`
 )
+
+func microfabConfig() string {
+	var chs []string
+	for _, ch := range channels.Global {
+		chs = append(chs, fmt.Sprintf(`{"name":%q,"endorsing_organizations":[%q]}`, ch, org))
+	}
+	return fmt.Sprintf(`{"endorsing_organizations":[{"name":%q}],"channels":[%s],"couchdb":false,"certificate_authorities":false}`, org, strings.Join(chs, ","))
+}
 
 // Fab is the one network every test in a binary shares.
 type Fab struct {
@@ -92,7 +100,7 @@ func start(ctx context.Context, hostPorts []int) (*Fab, error) {
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:           "ghcr.io/hyperledger-labs/microfab:latest",
 			ExposedPorts:    []string{microfabPort, peerPort, ordererPort},
-			Env:             map[string]string{"MICROFAB_CONFIG": microfabConfig},
+			Env:             map[string]string{"MICROFAB_CONFIG": microfabConfig()},
 			Networks:        []string{nw.Name},
 			NetworkAliases:  map[string][]string{nw.Name: {microfabAlias}},
 			HostAccessPorts: hostPorts,
@@ -200,7 +208,7 @@ func (f *Fab) Options(chaincodeName string) config.Fabric {
 		MSPID:        MSPID,
 		CertFile:     f.CertFile,
 		KeyFile:      f.KeyFile,
-		Global:       config.Global{Channel: Channel, Chaincode: chaincodeName},
+		Chaincode:    chaincodeName,
 	}
 }
 
@@ -224,12 +232,17 @@ func Pack(label, address string) (pkg []byte, pkgID string, err error) {
 	return pkg, pkgID, err
 }
 
-// Define installs pkg on the peer and defines it as name on Channel.
+// Define installs pkg on the peer and defines it as name on every global channel.
 func (f *Fab) Define(ctx context.Context, name string, pkg []byte, pkgID string) error {
 	if _, err := fabcc.NewPeer(f.peer, f.admin).Install(ctx, bytes.NewReader(pkg)); err != nil {
 		return fmt.Errorf("install: %w", err)
 	}
-	return f.define(ctx, Channel, name, pkgID)
+	for _, ch := range channels.Global {
+		if err := f.define(ctx, ch, name, pkgID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // define treats a definition already committed on channel as success.
@@ -237,10 +250,10 @@ func (f *Fab) define(ctx context.Context, channel, name, pkgID string) error {
 	gw := fabcc.NewGateway(f.peer, f.admin)
 	def := &fabcc.Definition{ChannelName: channel, PackageID: pkgID, Name: name, Version: "1", Sequence: 1}
 	if err := gw.Approve(ctx, def); err != nil && !already(err, "redefine the current committed sequence") {
-		return fmt.Errorf("approve: %w", err)
+		return fmt.Errorf("define %s on %s: approve: %w", name, channel, err)
 	}
 	if err := gw.Commit(ctx, def); err != nil && !already(err, "new definition must be sequence 2") {
-		return fmt.Errorf("commit: %w", err)
+		return fmt.Errorf("define %s on %s: commit: %w", name, channel, err)
 	}
 	return nil
 }
