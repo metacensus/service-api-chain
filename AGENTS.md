@@ -4,7 +4,7 @@ Decisions with no single declaration to sit beside. Per-declaration detail is a 
 
 ## Adding a route
 
-A route starts in the contract and `store.Store`; here it needs a `wire` transaction, a `Dispatch` case, and `gateway` and `ledger` methods — the compiler asks for the methods, `storetest` for the rest. A route on a topic names its channel through `channels.Topic` in `gateway`, and anything its `ledger` method needs from users or topics goes through `ledger.Global`. `go list -f '{{.ImportPath}}: {{.Doc}}' ./...` maps the packages.
+A route starts in the contract and `store.Store`; here it needs a `wire` transaction, a `Dispatch` case, and `gateway` and `ledger` methods — the compiler asks for the methods, `storetest` for the rest. A route on a topic names its channel through `channels.Topic` in `gateway`, and anything its `ledger` method needs from users or topics goes through `ledger.Registry`. `go list -f '{{.ImportPath}}: {{.Doc}}' ./...` maps the packages.
 
 ## Rules below the seam
 

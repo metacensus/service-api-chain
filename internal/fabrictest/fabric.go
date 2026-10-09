@@ -54,7 +54,7 @@ const (
 
 func microfabConfig() string {
 	var chs []string
-	for _, ch := range channels.Global {
+	for _, ch := range channels.Fixed {
 		chs = append(chs, fmt.Sprintf(`{"name":%q,"endorsing_organizations":[%q]}`, ch, org))
 	}
 	return fmt.Sprintf(`{"endorsing_organizations":[{"name":%q}],"channels":[%s],"couchdb":false,"certificate_authorities":false}`, org, strings.Join(chs, ","))
@@ -232,12 +232,11 @@ func Pack(label, address string) (pkg []byte, pkgID string, err error) {
 	return pkg, pkgID, err
 }
 
-// Define installs pkg on the peer and defines it as name on every global channel.
 func (f *Fab) Define(ctx context.Context, name string, pkg []byte, pkgID string) error {
 	if _, err := fabcc.NewPeer(f.peer, f.admin).Install(ctx, bytes.NewReader(pkg)); err != nil {
 		return fmt.Errorf("install: %w", err)
 	}
-	for _, ch := range channels.Global {
+	for _, ch := range channels.Fixed {
 		if err := f.define(ctx, ch, name, pkgID); err != nil {
 			return err
 		}

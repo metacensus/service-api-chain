@@ -115,7 +115,7 @@ func (s *chainStore) ListVotes(ctx context.Context, topicID, propID string) ([]*
 
 // target is an op's channel. A topic's channel that cannot be resolved or is
 // not served answers as the topic not existing: InvalidContent for a write,
-// NotFound for a read; a global channel's refusal stays what it is.
+// NotFound for a read.
 type target struct {
 	channel    string
 	unresolved error

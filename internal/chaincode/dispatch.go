@@ -14,9 +14,9 @@ import (
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
-func Dispatch(kv ledger.KV, global ledger.Global, policy signing.Policy, fn string, args [][]byte) ([]byte, error) {
+func Dispatch(kv ledger.KV, registry ledger.Registry, policy signing.Policy, fn string, args [][]byte) ([]byte, error) {
 	ctx := context.Background() // the ledger never blocks; there is nothing to cancel
-	s := ledger.New(kv, global, policy)
+	s := ledger.New(kv, registry, policy)
 	switch fn {
 	case wire.EnrollUser:
 		record, publicKey, hash, err := wire.DecodeEnrollUser(args)

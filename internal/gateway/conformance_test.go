@@ -30,7 +30,7 @@ type network struct {
 
 func newNetwork() *network {
 	n := &network{states: map[string]*memkv.Store{}}
-	for _, ch := range channels.Global {
+	for _, ch := range channels.Fixed {
 		n.states[ch] = memkv.New()
 	}
 	return n
