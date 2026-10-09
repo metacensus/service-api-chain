@@ -13,7 +13,7 @@ import (
 	"github.com/metacensus/service-api-chain/internal/wire"
 )
 
-// Remote is ledger.Global over a query failing with store.NotFound for an
+// Remote is ledger.Registry over a query failing with store.NotFound for an
 // absent record.
 type Remote func(channel, fn string, args ...string) ([]byte, error)
 
