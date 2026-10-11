@@ -34,9 +34,7 @@ const (
 	SetVote     = "SetVote"
 	ListVotes   = "ListVotes"
 
-	// GetKey has no store method: a topic channel's chaincode asks the global
-	// channel's for a key_id; it answers EncodeList [owner, publicKey], or
-	// NotFound.
+	// GetKey has no store method: it is ledger.Registry.Key, asked of metacensus.users.
 	GetKey = "GetKey"
 )
 

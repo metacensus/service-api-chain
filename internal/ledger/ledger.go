@@ -52,25 +52,25 @@ type keyRecord struct {
 	PublicKey string `json:"publicKey"`
 }
 
-// Global is what the users and topics channels own, as a write on another
-// channel reads it. That read is outside the read set and not re-validated at
-// commit, which is safe only while keys and topics are never changed or
-// removed.
-type Global interface {
+// Registry is what metacensus.users and metacensus.topics own, as a write on
+// another channel reads it. That read is outside the read set and not
+// re-validated at commit, which is safe only while keys and topics are never
+// changed or removed.
+type Registry interface {
 	Key(keyID string) (owner, publicKey string, found bool, err error)
 	HasTopic(topicID string) (bool, error)
 }
 
-func Local(kv KV) Global { return local{kv} }
+func Local(kv KV) Registry { return local{kv} }
 
 type local struct{ kv KV }
 
-func (g local) Key(keyID string) (owner, publicKey string, found bool, err error) {
-	k, err := g.kv.Key(keyType, keyID)
+func (r local) Key(keyID string) (owner, publicKey string, found bool, err error) {
+	k, err := r.kv.Key(keyType, keyID)
 	if err != nil {
 		return "", "", false, nil // a key_id the world state cannot hold names no enrolled key
 	}
-	b, err := g.kv.Get(k)
+	b, err := r.kv.Get(k)
 	if err != nil || b == nil {
 		return "", "", false, err
 	}
@@ -81,23 +81,23 @@ func (g local) Key(keyID string) (owner, publicKey string, found bool, err error
 	return rec.Owner, rec.PublicKey, true, nil
 }
 
-func (g local) HasTopic(topicID string) (bool, error) {
-	k, err := g.kv.Key(topicType, topicID)
+func (r local) HasTopic(topicID string) (bool, error) {
+	k, err := r.kv.Key(topicType, topicID)
 	if err != nil {
 		return false, nil // an id the world state cannot hold names no topic
 	}
-	b, err := g.kv.Get(k)
+	b, err := r.kv.Get(k)
 	return b != nil, err
 }
 
 type ledger struct {
-	kv     KV
-	global Global
-	policy signing.Policy
+	kv       KV
+	registry Registry
+	policy   signing.Policy
 }
 
-func New(kv KV, global Global, policy signing.Policy) store.Store {
-	return &ledger{kv: kv, global: global, policy: policy}
+func New(kv KV, registry Registry, policy signing.Policy) store.Store {
+	return &ledger{kv: kv, registry: registry, policy: policy}
 }
 
 type op string
@@ -226,7 +226,7 @@ func validID(o op, kind store.IDKind, id string) error {
 }
 
 func (l *ledger) authorize(o op, callerID string, content proto.Message, interp *v1.Interpretation, sig *v1.Signature) error {
-	owner, publicKey, found, err := l.global.Key(sig.GetKeyId())
+	owner, publicKey, found, err := l.registry.Key(sig.GetKeyId())
 	if err != nil {
 		return o.wrap(err)
 	}
@@ -346,7 +346,7 @@ func (l *ledger) CreateProp(_ context.Context, callerID string, record *v1.PropS
 		return err
 	}
 	topicID := record.GetContent().GetTopicId()
-	hasTopic, err := l.global.HasTopic(topicID)
+	hasTopic, err := l.registry.HasTopic(topicID)
 	if err != nil {
 		return o.wrap(err)
 	}

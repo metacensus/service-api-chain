@@ -8,15 +8,15 @@ import (
 	"github.com/metacensus/api/go/store"
 )
 
-// The global channels. Users also holds emails and keys; orgs is written by
-// nothing yet.
+// The channels every network starts with. Users also holds emails and keys;
+// orgs is written by nothing yet.
 const (
 	Users  = "metacensus.users"
 	Topics = "metacensus.topics"
 	orgs   = "metacensus.orgs"
 )
 
-var Global = []string{Users, Topics, orgs}
+var Fixed = []string{Users, Topics, orgs}
 
 // Topic names the channel holding topicID's props and votes; a canonical UUID
 // is a valid channel name.
