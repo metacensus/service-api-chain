@@ -45,7 +45,7 @@ The chaincode:
 
 ## Releasing
 
-`make release TYPE=patch|minor|major` tags and pushes; the tag publishes `docker.io/metacensus/service-api-chain` and `service-api-chain-chaincode`. Publishing needs the `DOCKERHUB_TOKEN` secret, an organization token with write access to both.
+`make release TYPE=patch|minor|major` tags and pushes; the tag publishes `docker.io/metacensus/service-api-chain` and `service-api-chain-chaincode`. It logs in through the `github-service-api-chain` OIDC connection in the Docker organization, so no secret is stored.
 
 ## License
 
