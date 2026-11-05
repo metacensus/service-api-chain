@@ -49,10 +49,9 @@ test-artifact: $(if $(SERVICE_IMAGE),,docker-build docker-build-chaincode)
 
 ## api-check — what an api change can break here: build, unit tests, storetest (needs Docker)
 #
-# Same contract as service-api-standard's: storetest runs at the stage
-# STORETEST_STAGE names, in process and against Microfab, and every go test
-# run writes its -json output to API_CHECK_JSON, which api's conformance
-# workflow reads. Nothing that reflects only this service's own state (lint,
+# Same contract as service-api-standard's: storetest runs in process and
+# against Microfab, and every go test run writes its -json output to
+# API_CHECK_JSON, which api's conformance workflow reads. Nothing that reflects only this service's own state (lint,
 # format, vuln scan, images, artifact suite) runs.
 API_CHECK_JSON ?= bin/api-check.json
 api-check:
