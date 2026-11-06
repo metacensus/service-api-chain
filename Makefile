@@ -1,6 +1,6 @@
 .PHONY: help build test test-race test-integration test-artifact \
         fmt fmt-check vet tidy-check golangci vuln lint check docker-build docker-build-chaincode \
-        release latest
+        release latest api-check
 
 .DEFAULT_GOAL := help
 
@@ -46,6 +46,16 @@ test-integration:
 test-artifact: $(if $(SERVICE_IMAGE),,docker-build docker-build-chaincode)
 	SERVICE_IMAGE=$(or $(SERVICE_IMAGE),$(IMAGE):$(IMAGE_TAG)) CHAINCODE_IMAGE=$(or $(CHAINCODE_IMAGE),$(CHAINCODE):$(IMAGE_TAG)) \
 		go test -tags=artifact -count=1 -timeout 15m ./integration/...
+
+## api-check — what an api change can break here: build, unit tests, storetest (needs Docker)
+#
+# metacensus/api runs this against each api pull request, with this module's
+# api requirement replaced by the commit under test. Nothing that reflects only
+# this service's own state (lint, format, vuln scan, images, artifact suite) runs.
+api-check:
+	go build ./...
+	go test -count=1 ./...
+	go test -tags=integration -count=1 -timeout 15m -run '^TestStore_Conformance$$' ./internal/gateway/
 
 ## fmt — rewrite with gofmt
 fmt:
