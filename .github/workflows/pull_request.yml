@@ -3,6 +3,8 @@ name: Pull request
 on:
   pull_request:
     branches: [main]
+  # The merge queue (#35) reruns everything against main as it stands at merge time.
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
