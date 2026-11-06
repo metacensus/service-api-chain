@@ -49,18 +49,13 @@ test-artifact: $(if $(SERVICE_IMAGE),,docker-build docker-build-chaincode)
 
 ## api-check — what an api change can break here: build, unit tests, storetest (needs Docker)
 #
-# Same contract as service-api-standard's: storetest runs in process and
-# against Microfab, and every go test run writes its -json output to
-# API_CHECK_JSON, which api's conformance workflow reads. Nothing that reflects only this service's own state (lint,
-# format, vuln scan, images, artifact suite) runs.
-API_CHECK_JSON ?= bin/api-check.json
+# metacensus/api runs this against each api pull request, with this module's
+# api requirement replaced by the commit under test. Nothing that reflects only
+# this service's own state (lint, format, vuln scan, images, artifact suite) runs.
 api-check:
-	@mkdir -p "$$(dirname '$(API_CHECK_JSON)')"; : > '$(API_CHECK_JSON)'; status=0; \
-	go build ./... || exit 1; \
-	go test -json -count=1 ./... >> '$(API_CHECK_JSON)' || status=1; \
-	go test -json -tags=integration -count=1 -timeout 15m -run '^TestStore_Conformance$$' ./internal/gateway/ >> '$(API_CHECK_JSON)' || status=1; \
-	echo "api-check: go test -json in $(API_CHECK_JSON)"; \
-	exit $$status
+	go build ./...
+	go test -count=1 ./...
+	go test -tags=integration -count=1 -timeout 15m -run '^TestStore_Conformance$$' ./internal/gateway/
 
 ## fmt — rewrite with gofmt
 fmt:
