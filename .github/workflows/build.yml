@@ -42,6 +42,37 @@ jobs:
       - run: docker pull ghcr.io/hyperledger-labs/microfab:latest
       - run: make test-integration
 
+  # Beside the jobs above, not instead of them: those build at the api version
+  # go.mod requires, this at api's main, so metacensus/api#94 never goes red
+  # on this repository's account (#34).
+  api-main:
+    name: Against api's main
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout api's main
+        uses: actions/checkout@v4
+        with:
+          repository: metacensus/api
+          ref: main
+          # Dot-prefixed, so ./... patterns skip it.
+          path: .api
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Replace api with its main
+        run: |
+          go mod edit -replace "github.com/metacensus/api=$GITHUB_WORKSPACE/.api"
+          echo "Built against metacensus/api@$(git -C .api rev-parse HEAD)." >> "$GITHUB_STEP_SUMMARY"
+      # Its own step, so a registry failure isn't read as a test timeout; uncached because the tag floats.
+      - run: docker pull ghcr.io/hyperledger-labs/microfab:latest
+      # -mod=mod records go.sum entries for anything api's main requires.
+      - run: make api-check
+        env:
+          GOWORK: "off"
+          GOFLAGS: -mod=mod
+
   artifact:
     name: Images
     runs-on: ubuntu-latest
