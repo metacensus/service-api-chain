@@ -100,11 +100,16 @@ docker-build:
 docker-build-chaincode:
 	docker build --target chaincode -t $(CHAINCODE):$(IMAGE_TAG) .
 
-## release — tag and push VERSION=x.y.z or the next TYPE=major|minor|patch; prompts unless YES=1
+## release — refuse an unreleased metacensus/api, then tag and push VERSION=x.y.z or the next TYPE=major|minor|patch; prompts unless YES=1
 release:
 	@set -e; \
 	VERSION=$$(./scripts/version.sh "$(VERSION)" "$(TYPE)"); \
 	TAG="v$$VERSION"; \
+	API=$$(GOWORK=off go list -m -f '{{.Version}}{{with .Replace}} => {{.Path}} {{.Version}}{{end}}' github.com/metacensus/api); \
+	if printf '%s' "$$API" | grep -Eq '[0-9]{14}-[0-9a-f]{12}|=>'; then \
+		echo "Error: go.mod requires github.com/metacensus/api $$API, not a release; refusing to tag"; \
+		exit 1; \
+	fi; \
 	if git ls-remote --exit-code --tags origin "refs/tags/$$TAG" >/dev/null 2>&1; then \
 		echo "Error: Tag $$TAG already exists on origin"; \
 		exit 1; \
