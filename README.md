@@ -45,7 +45,7 @@ The chaincode:
 
 ## Releasing
 
-`make release TYPE=patch|minor|major` tags and pushes; the tag publishes `docker.io/metacensus/service-api-chain` and `service-api-chain-chaincode`. It logs in through the `github-service-api-chain` OIDC connection in the Docker organization, so no secret is stored.
+`make release TYPE=patch|minor|major` tags and pushes; the tag publishes `docker.io/metacensus/service-api-chain` and `service-api-chain-chaincode`. It logs in through the `github-service-api-chain` OIDC connection in the Docker organization, so no secret is stored. It refuses while `go.mod` requires an unreleased `github.com/metacensus/api`. Each api release opens a `deps/api-vX.Y.Z` pull request here that merges itself once CI passes ([metacensus/api#97](https://github.com/metacensus/api/issues/97)); one that fails CI waits for a person.
 
 ## License
 
