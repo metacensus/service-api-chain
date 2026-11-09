@@ -70,6 +70,20 @@ func (s *chainStore) SetVote(ctx context.Context, callerID string, record *v1.Vo
 	return s.write(ctx, onTopic(record.GetContent().GetTopicId()), wire.SetVote, callerID, record)
 }
 
+// CreatePublication writes on metacensus.topics, beside the topics that take
+// publications up: a publication is global, and no channel kind owns it alone.
+func (s *chainStore) CreatePublication(ctx context.Context, record *v1.Publication) error {
+	args, err := wire.EncodeUnsigned(record)
+	if err != nil {
+		return failure(wire.CreatePublication, err)
+	}
+	return s.submit(ctx, on(channels.Topics), wire.CreatePublication, args)
+}
+
+func (s *chainStore) CreatePaper(ctx context.Context, callerID string, record *v1.PaperSigned) error {
+	return s.write(ctx, onTopic(record.GetContent().GetTopicId()), wire.CreatePaper, callerID, record)
+}
+
 func (s *chainStore) Credential(ctx context.Context, email string) (id, passwordHash string, err error) {
 	out, err := s.evaluate(ctx, on(channels.Users), wire.Credential, email)
 	if err != nil {
@@ -95,6 +109,22 @@ func (s *chainStore) GetTopic(ctx context.Context, id string) (*v1.TopicSigned, 
 
 func (s *chainStore) GetProp(ctx context.Context, topicID, propID string) (*v1.PropSigned, error) {
 	return getRecord[*v1.PropSigned](ctx, s, onTopic(topicID), wire.GetProp, topicID, propID)
+}
+
+func (s *chainStore) GetPublication(ctx context.Context, id string) (*v1.Publication, error) {
+	return getRecord[*v1.Publication](ctx, s, on(channels.Topics), wire.GetPublication, id)
+}
+
+func (s *chainStore) FindPublication(ctx context.Context, doi, pmid string) (*v1.Publication, error) {
+	return getRecord[*v1.Publication](ctx, s, on(channels.Topics), wire.FindPublication, doi, pmid)
+}
+
+func (s *chainStore) GetPaper(ctx context.Context, topicID, paperID string) (*v1.PaperSigned, error) {
+	return getRecord[*v1.PaperSigned](ctx, s, onTopic(topicID), wire.GetPaper, topicID, paperID)
+}
+
+func (s *chainStore) FindPaper(ctx context.Context, topicID, publicationID string) (*v1.PaperSigned, error) {
+	return getRecord[*v1.PaperSigned](ctx, s, onTopic(topicID), wire.FindPaper, topicID, publicationID)
 }
 
 func (s *chainStore) ListUsers(ctx context.Context) ([]*v1.UserSigned, error) {

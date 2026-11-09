@@ -43,6 +43,14 @@ func (query Remote) HasTopic(topicID string) (bool, error) {
 	return err == nil, err
 }
 
+func (query Remote) HasPublication(publicationID string) (bool, error) {
+	_, err := query(channels.Topics, wire.GetPublication, publicationID)
+	if errors.Is(err, store.NotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func invoke(stub shim.ChaincodeStubInterface, name string) Remote {
 	return func(channel, fn string, args ...string) ([]byte, error) {
 		invocation := append([][]byte{[]byte(fn)}, wire.EncodeStrings(args...)...)

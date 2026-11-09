@@ -30,6 +30,14 @@ func Dispatch(kv ledger.KV, registry ledger.Registry, policy signing.Policy, fn 
 		return write(ctx, args, &v1.PropSigned{}, s.CreateProp)
 	case wire.SetVote:
 		return write(ctx, args, &v1.VoteSigned{}, s.SetVote)
+	case wire.CreatePublication:
+		record := &v1.Publication{}
+		if err := wire.DecodeUnsigned(args, record); err != nil {
+			return nil, err
+		}
+		return nil, s.CreatePublication(ctx, record)
+	case wire.CreatePaper:
+		return write(ctx, args, &v1.PaperSigned{}, s.CreatePaper)
 
 	case wire.Credential:
 		a, err := wire.DecodeStrings(args, 1)
@@ -47,6 +55,14 @@ func Dispatch(kv ledger.KV, registry ledger.Registry, policy signing.Policy, fn 
 		return get(args, 1, func(a []string) (*v1.TopicSigned, error) { return s.GetTopic(ctx, a[0]) })
 	case wire.GetProp:
 		return get(args, 2, func(a []string) (*v1.PropSigned, error) { return s.GetProp(ctx, a[0], a[1]) })
+	case wire.GetPublication:
+		return get(args, 1, func(a []string) (*v1.Publication, error) { return s.GetPublication(ctx, a[0]) })
+	case wire.FindPublication:
+		return get(args, 2, func(a []string) (*v1.Publication, error) { return s.FindPublication(ctx, a[0], a[1]) })
+	case wire.GetPaper:
+		return get(args, 2, func(a []string) (*v1.PaperSigned, error) { return s.GetPaper(ctx, a[0], a[1]) })
+	case wire.FindPaper:
+		return get(args, 2, func(a []string) (*v1.PaperSigned, error) { return s.FindPaper(ctx, a[0], a[1]) })
 	case wire.ListUsers:
 		return list(args, 0, func([]string) ([]*v1.UserSigned, error) { return s.ListUsers(ctx) })
 	case wire.ListTopics:
