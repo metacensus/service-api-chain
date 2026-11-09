@@ -42,6 +42,8 @@ func TestRouting(t *testing.T) {
 			call: func(s store.Store) error { _, err := s.ListProps(t.Context(), topicID); return err }},
 		{name: "ListVotes on the topic's channel", channel: topicChannel, method: wire.ListVotes,
 			call: func(s store.Store) error { _, err := s.ListVotes(t.Context(), topicID, propID); return err }},
+		{name: "ListPapers on the topic's channel", channel: topicChannel, method: wire.ListPapers,
+			call: func(s store.Store) error { _, err := s.ListPapers(t.Context(), topicID); return err }},
 	}
 	for _, tt := range tests {
 		t.Run("success - "+tt.name, func(t *testing.T) {
@@ -153,6 +155,8 @@ func TestRouting_MissingChannel(t *testing.T) {
 			call: func(s store.Store) error { _, err := s.ListProps(t.Context(), topicID); return err }},
 		{name: "ListVotes is NotFound", refusal: "evaluate", want: store.NotFound,
 			call: func(s store.Store) error { _, err := s.ListVotes(t.Context(), topicID, propID); return err }},
+		{name: "ListPapers is NotFound", refusal: "evaluate", want: store.NotFound,
+			call: func(s store.Store) error { _, err := s.ListPapers(t.Context(), topicID); return err }},
 		{name: "GetTopic on the topics channel stays Unavailable", refusal: "evaluate", want: store.Unavailable,
 			call: func(s store.Store) error { _, err := s.GetTopic(t.Context(), topicID); return err }},
 		{name: "EnrollUser on the users channel stays unclassified", refusal: "submit", want: "",

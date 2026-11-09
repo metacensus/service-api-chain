@@ -118,15 +118,7 @@ type ledger struct {
 	policy   signing.Policy
 }
 
-// Store is store.Store with ListPapers, which api declares on store.Store only
-// once this implementation has merged (api#134). It folds into store.Store
-// then.
-type Store interface {
-	store.Store
-	ListPapers(ctx context.Context, topicID string) ([]*v1.PaperSigned, error)
-}
-
-func New(kv KV, registry Registry, policy signing.Policy) Store {
+func New(kv KV, registry Registry, policy signing.Policy) store.Store {
 	return &ledger{kv: kv, registry: registry, policy: policy}
 }
 

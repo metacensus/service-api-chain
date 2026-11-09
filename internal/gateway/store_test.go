@@ -259,4 +259,6 @@ func TestStore_List(t *testing.T) {
 		call: func(s store.Store) ([]*v1.PropSigned, error) { return s.ListProps(t.Context(), topicID) }})
 	runList(t, listCase[*v1.VoteSigned]{name: "ListVotes", method: wire.ListVotes, args: []string{topicID, propID}, want: []*v1.VoteSigned{vote},
 		call: func(s store.Store) ([]*v1.VoteSigned, error) { return s.ListVotes(t.Context(), topicID, propID) }})
+	runList(t, listCase[*v1.PaperSigned]{name: "ListPapers", method: wire.ListPapers, args: []string{topicID}, want: []*v1.PaperSigned{{Content: &v1.Paper{TopicId: topicID}}},
+		call: func(s store.Store) ([]*v1.PaperSigned, error) { return s.ListPapers(t.Context(), topicID) }})
 }

@@ -75,6 +75,7 @@ func TestLedger_Reads(t *testing.T) {
 		{name: "error - GetProp prop the world state cannot hold", read: func(s store.Store) error { _, err := s.GetProp(ctx, "t", unholdable); return err }},
 		{name: "error - ListProps topic the world state cannot hold", read: func(s store.Store) error { _, err := s.ListProps(ctx, unholdable); return err }},
 		{name: "error - ListVotes prop the world state cannot hold", read: func(s store.Store) error { _, err := s.ListVotes(ctx, "t", unholdable); return err }},
+		{name: "error - ListPapers topic the world state cannot hold", read: func(s store.Store) error { _, err := s.ListPapers(ctx, unholdable); return err }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
