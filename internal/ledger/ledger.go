@@ -118,7 +118,15 @@ type ledger struct {
 	policy   signing.Policy
 }
 
-func New(kv KV, registry Registry, policy signing.Policy) store.Store {
+// Store is store.Store with ListPapers, which api declares on store.Store only
+// once this implementation has merged (api#134). It folds into store.Store
+// then.
+type Store interface {
+	store.Store
+	ListPapers(ctx context.Context, topicID string) ([]*v1.PaperSigned, error)
+}
+
+func New(kv KV, registry Registry, policy signing.Policy) Store {
 	return &ledger{kv: kv, registry: registry, policy: policy}
 }
 
@@ -540,6 +548,10 @@ func (l *ledger) CreatePaper(_ context.Context, callerID string, record *v1.Pape
 
 func (l *ledger) GetPaper(_ context.Context, topicID, paperID string) (*v1.PaperSigned, error) {
 	return read[*v1.PaperSigned](l, "GetPaper", paperType, topicID, paperID)
+}
+
+func (l *ledger) ListPapers(_ context.Context, topicID string) ([]*v1.PaperSigned, error) {
+	return list[*v1.PaperSigned](l, "ListPapers", paperType, topicID)
 }
 
 func (l *ledger) FindPaper(ctx context.Context, topicID, publicationID string) (*v1.PaperSigned, error) {
