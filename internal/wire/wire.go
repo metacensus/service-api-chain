@@ -39,6 +39,7 @@ const (
 	FindPublication   = "FindPublication"
 	CreatePaper       = "CreatePaper"
 	GetPaper          = "GetPaper"
+	ListPapers        = "ListPapers"
 	FindPaper         = "FindPaper"
 
 	// GetKey has no store method: it is ledger.Registry.Key, asked of metacensus.users.

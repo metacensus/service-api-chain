@@ -139,6 +139,10 @@ func (s *chainStore) ListProps(ctx context.Context, topicID string) ([]*v1.PropS
 	return listRecords[*v1.PropSigned](ctx, s, onTopic(topicID), wire.ListProps, topicID)
 }
 
+func (s *chainStore) ListPapers(ctx context.Context, topicID string) ([]*v1.PaperSigned, error) {
+	return listRecords[*v1.PaperSigned](ctx, s, onTopic(topicID), wire.ListPapers, topicID)
+}
+
 func (s *chainStore) ListVotes(ctx context.Context, topicID, propID string) ([]*v1.VoteSigned, error) {
 	return listRecords[*v1.VoteSigned](ctx, s, onTopic(topicID), wire.ListVotes, topicID, propID)
 }

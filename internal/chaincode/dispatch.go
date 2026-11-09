@@ -69,6 +69,8 @@ func Dispatch(kv ledger.KV, registry ledger.Registry, policy signing.Policy, fn 
 		return list(args, 0, func([]string) ([]*v1.TopicSigned, error) { return s.ListTopics(ctx) })
 	case wire.ListProps:
 		return list(args, 1, func(a []string) ([]*v1.PropSigned, error) { return s.ListProps(ctx, a[0]) })
+	case wire.ListPapers:
+		return list(args, 1, func(a []string) ([]*v1.PaperSigned, error) { return s.ListPapers(ctx, a[0]) })
 	case wire.ListVotes:
 		return list(args, 2, func(a []string) ([]*v1.VoteSigned, error) { return s.ListVotes(ctx, a[0], a[1]) })
 
