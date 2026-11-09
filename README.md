@@ -7,7 +7,7 @@ The store spans two deployables, built from this one module:
 - **the API** (`cmd/service`, `Dockerfile` target `service`), which reaches the peers through a Fabric gateway;
 - **the chaincode** (`cmd/chaincode`, target `chaincode`), chaincode-as-a-service the peers dial.
 
-The peers serve the chaincode on `metacensus.users`, `metacensus.topics`, `metacensus.orgs`, and `metacensus.topic.<uuid>` per topic ([`internal/channels`](internal/channels/channels.go)). The API creates none of them; a prop on a topic whose channel does not exist yet is refused.
+The peers serve the chaincode on `metacensus.users`, `metacensus.topics`, `metacensus.orgs`, and `metacensus.topic.<uuid>` per topic ([`internal/channels`](internal/channels/channels.go)). Publications, which every topic shares, live on `metacensus.topics`; a topic's papers on its own channel. The API creates none of them; a prop on a topic whose channel does not exist yet is refused.
 
 Design decisions are in [AGENTS.md](AGENTS.md).
 

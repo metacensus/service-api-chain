@@ -40,7 +40,19 @@ const (
 	topicType = "topic"
 	propType  = "prop"
 	voteType  = "vote"
+
+	publicationType = "publication"
+	doiType         = "doi"
+	pmidType        = "pmid"
+	paperType       = "paper"
+	includesType    = "includes"
 )
+
+// heldBy indexes an external id (doi, pmid) to the publication holding it, and
+// a (topic, publication) pair to the paper including it.
+type heldBy struct {
+	ID string `json:"id"`
+}
 
 type emailRecord struct {
 	ID           string `json:"id"`
@@ -54,11 +66,12 @@ type keyRecord struct {
 
 // Registry is what metacensus.users and metacensus.topics own, as a write on
 // another channel reads it. That read is outside the read set and not
-// re-validated at commit, which is safe only while keys and topics are never
-// changed or removed.
+// re-validated at commit, which is safe only while keys, topics and
+// publications are never changed or removed.
 type Registry interface {
 	Key(keyID string) (owner, publicKey string, found bool, err error)
 	HasTopic(topicID string) (bool, error)
+	HasPublication(publicationID string) (bool, error)
 }
 
 func Local(kv KV) Registry { return local{kv} }
@@ -90,13 +103,35 @@ func (r local) HasTopic(topicID string) (bool, error) {
 	return b != nil, err
 }
 
+func (r local) HasPublication(publicationID string) (bool, error) {
+	k, err := r.kv.Key(publicationType, publicationID)
+	if err != nil {
+		return false, nil // an id the world state cannot hold names no publication
+	}
+	b, err := r.kv.Get(k)
+	return b != nil, err
+}
+
 type ledger struct {
 	kv       KV
 	registry Registry
 	policy   signing.Policy
 }
 
-func New(kv KV, registry Registry, policy signing.Policy) store.Store {
+// Store is store.Store with the publication and paper methods, which api
+// declares on store.Store only once this implementation has merged (api#133).
+// It folds into store.Store then.
+type Store interface {
+	store.Store
+	CreatePublication(ctx context.Context, record *v1.Publication) error
+	GetPublication(ctx context.Context, id string) (*v1.Publication, error)
+	FindPublication(ctx context.Context, doi, pmid string) (*v1.Publication, error)
+	CreatePaper(ctx context.Context, callerID string, record *v1.PaperSigned) error
+	GetPaper(ctx context.Context, topicID, paperID string) (*v1.PaperSigned, error)
+	FindPaper(ctx context.Context, topicID, publicationID string) (*v1.PaperSigned, error)
+}
+
+func New(kv KV, registry Registry, policy signing.Policy) Store {
 	return &ledger{kv: kv, registry: registry, policy: policy}
 }
 
@@ -400,4 +435,134 @@ func (l *ledger) SetVote(_ context.Context, callerID string, record *v1.VoteSign
 
 func (l *ledger) ListVotes(_ context.Context, topicID, propID string) ([]*v1.VoteSigned, error) {
 	return list[*v1.VoteSigned](l, "ListVotes", voteType, topicID, propID)
+}
+
+func (l *ledger) CreatePublication(_ context.Context, record *v1.Publication) error {
+	const o = op("CreatePublication")
+	if err := validID(o, store.PublicationID, record.GetId()); err != nil {
+		return err
+	}
+	if record.GetDoi() == "" && record.GetPmid() == "" {
+		return o.kind(store.InvalidContent, nil)
+	}
+	k, err := l.key(o, publicationType, record.GetId())
+	if err != nil {
+		return err
+	}
+	held := []string{k}
+	for _, ext := range []struct{ objectType, id string }{{doiType, record.GetDoi()}, {pmidType, record.GetPmid()}} {
+		if ext.id == "" {
+			continue
+		}
+		ek, err := l.key(o, ext.objectType, ext.id)
+		if err != nil {
+			return err
+		}
+		held = append(held, ek)
+	}
+	for _, hk := range held {
+		if err := l.free(o, hk); err != nil {
+			return err
+		}
+	}
+	if err := l.put(o, k, record); err != nil {
+		return err
+	}
+	for _, hk := range held[1:] {
+		if err := l.put(o, hk, heldBy{ID: record.GetId()}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *ledger) GetPublication(_ context.Context, id string) (*v1.Publication, error) {
+	return read[*v1.Publication](l, "GetPublication", publicationType, id)
+}
+
+func (l *ledger) FindPublication(ctx context.Context, doi, pmid string) (*v1.Publication, error) {
+	const o = op("FindPublication")
+	for _, ext := range []struct{ objectType, id string }{{doiType, doi}, {pmidType, pmid}} {
+		if ext.id == "" {
+			continue
+		}
+		id, found, err := l.heldBy(o, ext.objectType, ext.id)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			return l.GetPublication(ctx, id)
+		}
+	}
+	return nil, o.kind(store.NotFound, nil)
+}
+
+// heldBy reads an index heldBy writes; an id the world state cannot hold is
+// held by nothing.
+func (l *ledger) heldBy(o op, objectType string, attrs ...string) (string, bool, error) {
+	k, err := l.kv.Key(objectType, attrs...)
+	if err != nil {
+		return "", false, nil
+	}
+	var rec heldBy
+	found, err := l.load(o, k, &rec)
+	return rec.ID, found, err
+}
+
+func (l *ledger) CreatePaper(_ context.Context, callerID string, record *v1.PaperSigned) error {
+	const o = op("CreatePaper")
+	c := record.GetContent()
+	if err := l.authorize(o, callerID, c, record.GetInterpretation(), record.GetUserSignature()); err != nil {
+		return err
+	}
+	if err := validID(o, store.PaperID, record.GetId()); err != nil {
+		return err
+	}
+	if c.GetTopicId() == "" || c.GetPublicationId() == "" {
+		return o.kind(store.InvalidContent, nil)
+	}
+	hasTopic, err := l.registry.HasTopic(c.GetTopicId())
+	if err != nil {
+		return o.wrap(err)
+	}
+	hasPublication, err := l.registry.HasPublication(c.GetPublicationId())
+	if err != nil {
+		return o.wrap(err)
+	}
+	if !hasTopic || !hasPublication {
+		return o.kind(store.InvalidContent, nil)
+	}
+	k, err := l.key(o, paperType, c.GetTopicId(), record.GetId())
+	if err != nil {
+		return err
+	}
+	includes, err := l.key(o, includesType, c.GetTopicId(), c.GetPublicationId())
+	if err != nil {
+		return err
+	}
+	for _, hk := range []string{k, includes} {
+		if err := l.free(o, hk); err != nil {
+			return err
+		}
+	}
+	if err := l.put(o, k, record); err != nil {
+		return err
+	}
+	return l.put(o, includes, heldBy{ID: record.GetId()})
+}
+
+func (l *ledger) GetPaper(_ context.Context, topicID, paperID string) (*v1.PaperSigned, error) {
+	return read[*v1.PaperSigned](l, "GetPaper", paperType, topicID, paperID)
+}
+
+func (l *ledger) FindPaper(ctx context.Context, topicID, publicationID string) (*v1.PaperSigned, error) {
+	const o = op("FindPaper")
+	id, found, err := l.heldBy(o, includesType, topicID, publicationID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, o.kind(store.NotFound, nil)
+	}
+	return l.GetPaper(ctx, topicID, id)
 }

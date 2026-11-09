@@ -34,6 +34,13 @@ const (
 	SetVote     = "SetVote"
 	ListVotes   = "ListVotes"
 
+	CreatePublication = "CreatePublication"
+	GetPublication    = "GetPublication"
+	FindPublication   = "FindPublication"
+	CreatePaper       = "CreatePaper"
+	GetPaper          = "GetPaper"
+	FindPaper         = "FindPaper"
+
 	// GetKey has no store method: it is ledger.Registry.Key, asked of metacensus.users.
 	GetKey = "GetKey"
 )
@@ -94,6 +101,26 @@ func DecodeEnrollUser(args [][]byte) (record *v1.UserSigned, publicKey, password
 		return nil, "", "", store.Errf(store.InvalidContent, "wire", fmt.Errorf("record: %w", err))
 	}
 	return record, string(args[1]), string(args[2]), nil
+}
+
+// EncodeUnsigned carries a write no member authors (CreatePublication): the
+// record alone, with no callerID.
+func EncodeUnsigned(record proto.Message) ([][]byte, error) {
+	rec, err := Record(record)
+	if err != nil {
+		return nil, err
+	}
+	return [][]byte{rec}, nil
+}
+
+func DecodeUnsigned(args [][]byte, record proto.Message) error {
+	if err := arity(args, 1); err != nil {
+		return err
+	}
+	if err := proto.Unmarshal(args[0], record); err != nil {
+		return store.Errf(store.InvalidContent, "wire", fmt.Errorf("record: %w", err))
+	}
+	return nil
 }
 
 func EncodeWrite(callerID string, record proto.Message) ([][]byte, error) {
